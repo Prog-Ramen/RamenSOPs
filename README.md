@@ -11,18 +11,27 @@ general ones - reviewed privately, scanned for secrets - are released here.
 
 ```
 sops/
-  index.json                 metadata-only index (discovery never downloads code)
-  <category>/_node.json      category description, keywords, requirements
-  <category>/<name>/sop.json interface: description, inputs (JSON schema), permissions, tests
-  <category>/<name>/run.py   implementation: JSON args on stdin -> JSON result on stdout
+  index.json                   top-level categories only
+  <category>/_index.json       that category's children: sub-categories, and SOPs with
+                               metadata + per-file SHA-256 (no code)
+  <category>/_node.json        category description, keywords, requirements
+  <category>/<name>/sop.json   interface: description, inputs (JSON schema), permissions, tests
+  <category>/<name>/run.py     implementation: JSON args on stdin -> JSON result on stdout
 ```
+
+The index is sharded so clients never download the whole registry.
 
 ## Use
 
+Rameness pulls from this registry on its own, and only what a task needs. When no local SOP
+covers a task, JEV walks this tree lazily with its normal activation criteria: it fetches a
+category's `_index.json` only when it explores that branch, downloads only the SOPs it selects,
+verifies every file's hash, and keeps an SOP only if its tests pass. SOPs that need permissions
+beyond your allowed set are pulled only with your approval.
+
 ```bash
-rameness sop install https://github.com/Prog-Ramen/RamenSOPs
-rameness sop remote "fetch json from an api"      # searches sops/index.json
-rameness sop test                                  # runs every SOP's embedded tests
+rameness sop pull text.slugify      # pull one SOP (walks only its ancestors' listings)
+rameness sop remote "slugify a title"
 ```
 
 ## Contribute
