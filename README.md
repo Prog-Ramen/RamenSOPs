@@ -1,4 +1,5 @@
-# RamenSOPs
+<div align="center"><img src="rameness_logo.png" alt="Rameness Logo" width="28%"></div>
+<div align="center"><img src="rameness_txt1.png" alt="Rameness Text" width="75%"></div>
 
 The public registry of general-purpose **SOPs** (standard operating procedures) for
 [Rameness](https://github.com/Prog-Ramen/Rameness): the JEV-driven agent harness.
