@@ -42,5 +42,5 @@ if __name__ == '__main__':
     size = sum(p.stat().st_size for p in cache.rglob('*') if p.is_file() and not p.is_symlink())
     print('Verified model cache bytes:', size)
     # Keep this workflow below the free repository allowance without increasing billing limits.
-    if size > 9_500_000_000:
-        raise ValueError('Model cache exceeds 9.5 GB budget')
+    if size > 9 * 1024**3:
+        raise ValueError('Model cache exceeds 9 GiB budget')

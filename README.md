@@ -100,7 +100,7 @@ not calibrated on a broad adversarial SOP dataset. Deterministic secret/private/
 findings still trigger guarded automatic closure and branch cleanup. Kev does not provide
 line-level evidence to justify a model-only accusation.
 
-Only model files are cached, with a 9.5 GB budget to stay below GitHub's included 10 GiB
+Only model files are cached, with a 9 GiB budget to stay below GitHub's included 10 GiB
 repository allowance. This workflow does not increase cache limits or enable paid runners.
 Other repository caches still count toward that allowance. Cache eviction means a future
 run may download again. Setup and review run only from trusted main; PR smoke benchmarks
