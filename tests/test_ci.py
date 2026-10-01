@@ -62,6 +62,12 @@ class GateTests(unittest.TestCase):
         self.assertTrue(r['auto_merge'], r)
         self.assertEqual(calls, META['tests'])
 
+    def test_linear_utility_can_reach_semantic_review(self):
+        self.put(code="import json, sys\na = json.load(sys.stdin)\njson.dump({'upper': a['text'].upper()}, sys.stdout)\n")
+        r = self.check()
+        self.assertTrue(r['auto_merge'], r)
+        self.assertEqual(r['head'], self.head)
+
     def test_failed_tests_block_merge(self):
         def fail(*args): raise ValueError('wrong result')
         r = self.check(fail)
