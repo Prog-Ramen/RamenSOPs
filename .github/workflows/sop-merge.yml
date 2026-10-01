@@ -1,0 +1,34 @@
+name: sop-merge
+on:
+  workflow_run:
+    workflows: [sop-check, secret-scan]
+    types: [completed]
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+  models: read
+concurrency:
+  group: sop-merge
+  cancel-in-progress: false
+jobs:
+  decide:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Recheck and merge eligible PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOP_REVIEW_MODEL: ${{ vars.SOP_REVIEW_MODEL }}
+        run: python ci/merge.py
