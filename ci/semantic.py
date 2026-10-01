@@ -14,7 +14,7 @@ Approve meaningful only for a useful repeatable operation with substantive behav
 KEYS = ('meaningful', 'general', 'implementation_matches_description', 'tests_cover_normal_and_edge', 'safe_with_declared_permissions')
 
 def policy_id():
-    return hashlib.sha256((Path(__file__).read_bytes() + Path(__file__).with_name('review.py').read_bytes() + MODEL.encode())).hexdigest()
+    return hashlib.sha256((Path(__file__).read_bytes() + Path(__file__).with_name('review.py').read_bytes() + Path(__file__).with_name('run_test.py').read_bytes() + MODEL.encode())).hexdigest()
 
 def decide(repo, base, head, records, token, request=None):
     payload = []
