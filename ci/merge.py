@@ -118,7 +118,7 @@ def main():
         if git('rev-parse', 'FETCH_HEAD') != sha:
             continue
         base = git('rev-parse', 'origin/main')
-        security = assess(Path('.'), base, sha, TOKEN)
+        security = assess(Path('.'), base, sha, os.environ.get('OPENAI_API_KEY', ''))
         if security['verdict'] == 'prohibited':
             result = {'ok': False, 'auto_merge': False, 'head': sha, 'fail': [], 'human': [], 'sops': [], 'security': security}
             result['remediation'] = close_and_cleanup(api, REPO, TOKEN, number, sha, security)
@@ -128,7 +128,7 @@ def main():
         result['security'] = security
         if security['verdict'] == 'unavailable':
             result['auto_merge'] = False
-            result['semantic'] = {'approved': False, 'unavailable': True, 'reason': 'Security review unavailable; automatic merge is blocked.'}
+            result['semantic'] = {'approved': False, 'unavailable': True, 'reason': 'Security review unavailable (' + security.get('error', 'unknown error') + '); automatic merge is blocked.'}
         elif security['verdict'] == 'uncertain':
             result['auto_merge'] = False
             result['human'].append('Security review is uncertain; maintainer review required.')
@@ -141,7 +141,7 @@ def main():
             result['auto_merge'] = False
         ready = result['auto_merge'] and checked(number, sha)
         if ready:
-            result['semantic'] = cached_semantic(number, sha) or decide(Path('.'), base, sha, result['sops'], TOKEN)
+            result['semantic'] = cached_semantic(number, sha) or decide(Path('.'), base, sha, result['sops'], os.environ.get('OPENAI_API_KEY', ''))
             if not result['semantic']['approved']:
                 if not result['semantic'].get('unavailable'):
                     result['human'].append(result['semantic']['reason'])
