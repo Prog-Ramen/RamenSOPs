@@ -1,0 +1,181 @@
+{
+  "id": "data.jsonl_audit",
+  "description": "Validate arbitrary JSON Lines text using standard JSON object rules. Return counts of physical lines, blank lines and objects, plus 1-based invalid-JSON and non-object line numbers. Accept text and an optional report output path. Handle empty input, CRLF and Unicode; reject nonstandard numeric constants. Uses only the Python standard library, with all input and output locations supplied by the caller.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "required": [
+      "text"
+    ],
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "The full JSONL content to audit (may contain blank lines; a trailing newline is not required)."
+      },
+      "output_file": {
+        "type": "string",
+        "description": "Optional path to also write the report as a JSON file."
+      }
+    }
+  },
+  "permissions": [
+    "compute",
+    "fs:write"
+  ],
+  "tests": [
+    {
+      "input": {
+        "text": ""
+      },
+      "expect": {
+        "total_lines": 0,
+        "object_count": 0,
+        "blank_count": 0,
+        "invalid_json_lines": [],
+        "non_object_lines": [],
+        "valid": true
+      }
+    },
+    {
+      "input": {
+        "text": "\n"
+      },
+      "expect": {
+        "total_lines": 1,
+        "object_count": 0,
+        "blank_count": 1,
+        "invalid_json_lines": [],
+        "non_object_lines": [],
+        "valid": true
+      }
+    },
+    {
+      "input": {
+        "text": "{\"a\":1}"
+      },
+      "expect": {
+        "total_lines": 1,
+        "object_count": 1,
+        "blank_count": 0,
+        "invalid_json_lines": [],
+        "non_object_lines": [],
+        "valid": true
+      }
+    },
+    {
+      "input": {
+        "text": "{\"a\":1}\n\n"
+      },
+      "expect": {
+        "total_lines": 2,
+        "object_count": 1,
+        "blank_count": 1,
+        "invalid_json_lines": [],
+        "non_object_lines": [],
+        "valid": true
+      }
+    },
+    {
+      "input": {
+        "text": "{\"a\":1}\n\n{broken}\n[1,2]\nnull\n\"hi\"\n42\n{\"b\":2} "
+      },
+      "expect": {
+        "total_lines": 8,
+        "object_count": 2,
+        "blank_count": 1,
+        "invalid_json_lines": [
+          3
+        ],
+        "non_object_lines": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "valid": false
+      }
+    },
+    {
+      "input": {
+        "text": "{\"v\":\"\u96ea caf\u00e9\u2028\"}\n"
+      },
+      "expect": {
+        "total_lines": 1,
+        "object_count": 1,
+        "blank_count": 0,
+        "invalid_json_lines": [],
+        "non_object_lines": [],
+        "valid": true
+      }
+    },
+    {
+      "input": {
+        "text": "\r\n{\"a\":1}\r\n"
+      },
+      "expect": {
+        "total_lines": 2,
+        "object_count": 1,
+        "blank_count": 1,
+        "invalid_json_lines": [],
+        "non_object_lines": [],
+        "valid": true
+      }
+    },
+    {
+      "input": {
+        "text": "{\"id\":1}\n{\"id\":2,\"name\":\"caf\u00e9\"}\n\n{broken}\n[1,2]\n{\"id\":3}\n"
+      },
+      "expect": {
+        "total_lines": 6,
+        "object_count": 3,
+        "blank_count": 1,
+        "invalid_json_lines": [
+          4
+        ],
+        "non_object_lines": [
+          5
+        ],
+        "valid": false
+      }
+    },
+    {
+      "input": {
+        "text": "\n{\"ok\":true}\nnull\n{\"n\":2}\n{\"bad\":}\n42\n\n{\"v\":\"\u96ea\"}\n"
+      },
+      "expect": {
+        "total_lines": 8,
+        "object_count": 3,
+        "blank_count": 2,
+        "invalid_json_lines": [
+          5
+        ],
+        "non_object_lines": [
+          3,
+          6
+        ],
+        "valid": false
+      }
+    },
+    {
+      "input": {
+        "text": "{\"x\":NaN}\n{\"x\":Infinity}\n{\"x\":-Infinity}\n"
+      },
+      "expect": {
+        "total_lines": 3,
+        "object_count": 0,
+        "blank_count": 0,
+        "invalid_json_lines": [
+          1,
+          2,
+          3
+        ],
+        "non_object_lines": [],
+        "valid": false
+      }
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
