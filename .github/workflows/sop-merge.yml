@@ -11,7 +11,6 @@ permissions:
   pull-requests: write
   issues: write
   actions: write
-  models: read
 concurrency:
   group: sop-merge
   cancel-in-progress: false
@@ -36,6 +35,7 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Recheck and merge eligible PRs
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SOP_REVIEW_MODEL: ${{ vars.SOP_REVIEW_MODEL }}
