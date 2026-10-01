@@ -2,7 +2,6 @@
 import hashlib
 import os
 from pathlib import Path
-from huggingface_hub import HfApi, snapshot_download
 
 MODELS = (
     ('jaredpalmer/kev-4b', '6cfce5c2fa4b4bd64026336ab649c5ca78857d52'),
@@ -31,6 +30,7 @@ def verify(root, files):
 
 
 if __name__ == '__main__':
+    from huggingface_hub import HfApi, snapshot_download
     api = HfApi()
     for repo, revision in MODELS:
         root = Path(snapshot_download(repo, revision=revision, allow_patterns=PATTERNS))
