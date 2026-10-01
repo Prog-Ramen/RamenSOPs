@@ -17,7 +17,7 @@ Approve meaningful only for a useful repeatable operation with substantive behav
 KEYS = ('meaningful', 'general', 'implementation_matches_description', 'tests_cover_normal_and_edge', 'safe_with_declared_permissions')
 
 def policy_id():
-    return hashlib.sha256((Path(__file__).read_bytes() + Path(__file__).with_name('review.py').read_bytes() + Path(__file__).with_name('run_test.py').read_bytes() + MODEL.encode() + ENDPOINT.encode() + b''.join(Path(__file__).with_name(name).read_bytes() for name in ('kev_review.py', 'kev_server.py', 'kev_download.py', 'kev-constraints.txt', 'setup_kev.sh', 'kev-positive.json')) + os.environ.get('SOP_REVIEW_BACKEND', 'openai').encode())).hexdigest()
+    return hashlib.sha256((Path(__file__).read_bytes() + Path(__file__).with_name('review.py').read_bytes() + Path(__file__).with_name('run_test.py').read_bytes() + MODEL.encode() + ENDPOINT.encode() + b''.join(Path(__file__).with_name(name).read_bytes() for name in ('kev_review.py', 'kev_server.py', 'kev_cpu.py', 'kev_download.py', 'kev-constraints.txt', 'setup_kev.sh', 'kev-positive.json')) + os.environ.get('SOP_REVIEW_BACKEND', 'openai').encode())).hexdigest()
 
 class ReviewUnavailable(ValueError):
     """Safe diagnostics describe the failure without exposing headers, prompts or output."""

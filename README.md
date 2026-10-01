@@ -87,7 +87,9 @@ Mechanical checks, isolated tests, secret scanning and branch protection remain 
 | `registry-index` | Builds metadata and SHA-256 indexes without executing SOP code, publishing the `registry` branch after each merge and hourly. |
 
 The trusted merge job runs pinned Kev-4B locally on a standard Ubuntu runner in CPU BF16
-mode. It downloads the pinned Kev adapter and Qwen base once into a verified Hugging Face
+storage mode, with FP32 linear arithmetic performed one layer at a time to avoid slow
+emulated BF16 operations while keeping the original weights and bounded memory use.
+It downloads the pinned Kev adapter and Qwen base once into a verified Hugging Face
 cache and restores that cache on later jobs. No OpenAI API key or externally hosted model
 is required. Source, model revisions and dependencies are pinned; restored weights are
 checked against the pinned Hub metadata before use. Oversized input is rejected instead of

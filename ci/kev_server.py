@@ -18,6 +18,16 @@ if __name__ == '__main__':
     os.environ['HF_HUB_OFFLINE'] = '1'
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
     DecisionModel.encode = strict_encode
+    from kev.checkpoint import Checkpoint
+    from kev_cpu import use_fp32_linear_compute
+    original_load = Checkpoint.load
+    def cpu_load(self, device, opts):
+        if str(device) != 'cpu':
+            raise ValueError('SOP reviewer must use the configured CPU backend')
+        tok, model = original_load(self, device, opts)
+        print('FP32 arithmetic layers:', use_fp32_linear_compute(model), flush=True)
+        return tok, model
+    Checkpoint.load = cpu_load
     from kev.serve import main
     sys.argv = ['kev.serve', '--run', RUN, '--port', '8008']
     main()
