@@ -173,6 +173,30 @@
         "non_object_lines": [],
         "valid": false
       }
+    },
+    {
+      "input": {
+        "text": "{\"n\":7}\n",
+        "output_file": "audit-report.json"
+      },
+      "expect": {
+        "total_lines": 1,
+        "object_count": 1,
+        "blank_count": 0,
+        "invalid_json_lines": [],
+        "non_object_lines": [],
+        "valid": true
+      },
+      "expect_files": {
+        "audit-report.json": {
+          "total_lines": 1,
+          "object_count": 1,
+          "blank_count": 0,
+          "invalid_json_lines": [],
+          "non_object_lines": [],
+          "valid": true
+        }
+      }
     }
   ],
   "status": "validated",
