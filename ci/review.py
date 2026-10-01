@@ -161,7 +161,7 @@ def criteria(meta, directory, files):
 def run_case(directory, entry, case):
     # No token, network, host write mount, privileged capabilities or Docker socket.
     name = 'ramensops-test-' + uuid.uuid4().hex
-    cmd = ['docker', 'run', '--name', name, '--rm', '--network=none', '--read-only', '--cap-drop=ALL',
+    cmd = ['docker', 'run', '-i', '--name', name, '--rm', '--network=none', '--read-only', '--cap-drop=ALL',
            '--security-opt=no-new-privileges', '--pids-limit=32', '--memory=256m', '--cpus=1',
            '--user=65534:65534', '--tmpfs=/tmp:rw,noexec,nosuid,size=32m,mode=1777',
            '--mount', f'type=bind,src={directory},dst=/sop,readonly', '--workdir=/tmp',
@@ -177,7 +177,9 @@ def run_case(directory, entry, case):
         finally:
             subprocess.run(['docker', 'rm', '-f', name], capture_output=True, timeout=10)
         if p.returncode:
-            raise ValueError(f'test exited {p.returncode}')
+            err.seek(0)
+            diagnostic = err.read(512).decode('utf-8', errors='replace')
+            raise ValueError(f'test exited {p.returncode}: {diagnostic!r}')
         out.seek(0)
         data = out.read(65537)
         if len(data) > 65536:

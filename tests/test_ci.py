@@ -234,6 +234,19 @@ class MergeGuardTests(unittest.TestCase):
 
 
 class ContainerAssertionTests(unittest.TestCase):
+    def test_docker_forwards_stdin_without_credentials(self):
+        def fake(cmd, **kwargs):
+            if cmd[:2] == ['docker', 'run']:
+                self.assertIn('-i', cmd)
+                self.assertIn('--network=none', cmd)
+                self.assertNotIn('--env', cmd)
+                self.assertNotIn('-e', cmd)
+                self.assertEqual(json.loads(kwargs['input']), META['tests'][0])
+                kwargs['stdout'].write(b'{"upper":"HELLO"}')
+            return subprocess.CompletedProcess(cmd, 0)
+        with tempfile.TemporaryDirectory() as temp, patch.object(review.subprocess, 'run', side_effect=fake):
+            review.run_case(Path(temp), 'run.py', META['tests'][0])
+
     def test_file_contents_checked_independently(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
