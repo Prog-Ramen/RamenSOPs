@@ -157,6 +157,9 @@ def assess(repo, base, head, token, scanner='gitleaks', request=None):
         text = json.dumps(files, ensure_ascii=False)
         if len(text) > 24000:
             return {'verdict': 'uncertain', 'findings': [], 'source': 'security-review-budget'}
+        if os.environ.get('SOP_REVIEW_BACKEND', 'openai') == 'kev':
+            from kev_review import security as kev_security
+            return kev_security(text, request=request)
         if not token:
             return {'verdict': 'unavailable', 'findings': [], 'source': 'security-reviewer-error', 'error': 'OPENAI_API_KEY is not configured'}
         first = None
