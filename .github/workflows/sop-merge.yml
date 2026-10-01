@@ -67,6 +67,7 @@ jobs:
           set -euo pipefail
           "$RUNNER_TEMP/kev-env/bin/python" ci/kev_server.py > "$RUNNER_TEMP/kev-server.log" 2>&1 &
           echo "KEV_PID=$!" >> "$GITHUB_ENV"
+          echo "$!" > "$RUNNER_TEMP/kev.pid"
           python ci/kev_ready.py
       - name: Install pinned secret scanner for independent security triage
         run: |

@@ -42,6 +42,7 @@ jobs:
           /usr/bin/time -v "$RUNNER_TEMP/kev-env/bin/python" ci/kev_server.py > "$RUNNER_TEMP/kev-server.log" 2> "$RUNNER_TEMP/kev-resource.log" &
           kev_process=$!
           trap 'kill "$kev_process" || true' EXIT
+          echo "$kev_process" > "$RUNNER_TEMP/kev.pid"
           python ci/kev_ready.py
           python ci/kev_benchmark.py
           ps -eo pid,rss,comm --sort=-rss | head -8
