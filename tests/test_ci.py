@@ -187,15 +187,15 @@ class GateTests(unittest.TestCase):
         good = {k: True for k in semantic.KEYS}
         good['reason'] = 'Useful parameterized text operation, tested empty and normal input.'
         def answer(req): return {'choices': [{'message': {'content': json.dumps(good)}}]}
-        r = semantic.decide(self.root, self.base, self.head, [{'id': 'text.upper', 'new': True}], 'fake', answer)
+        r = semantic.decide(self.root, self.base, self.head, [{'id': 'text.upper', 'new': True}], 'fake', answer, sleep=lambda _: None)
         self.assertTrue(r['approved'])
         good['meaningful'] = 'true'
-        self.assertFalse(semantic.decide(self.root, self.base, self.head, [{'id': 'text.upper', 'new': True}], 'fake', answer)['approved'])
+        self.assertFalse(semantic.decide(self.root, self.base, self.head, [{'id': 'text.upper', 'new': True}], 'fake', answer, sleep=lambda _: None)['approved'])
 
     def test_semantic_api_failure_blocks(self):
         self.check()
         def fail(req): raise OSError('unavailable')
-        r = semantic.decide(self.root, self.base, self.head, [{'id': 'text.upper', 'new': True}], 'fake', fail)
+        r = semantic.decide(self.root, self.base, self.head, [{'id': 'text.upper', 'new': True}], 'fake', fail, sleep=lambda _: None)
         self.assertFalse(r['approved'])
         self.assertTrue(r['unavailable'])
 

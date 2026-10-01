@@ -50,7 +50,8 @@ organization-specific endpoints, names or data), contain no secrets, and pass it
 Every SOP PR runs `sop-check` and `secret-scan`. Once both pass for the same commit,
 `sop-merge` independently reads that commit using the trusted policy on `main`, reviews its
 usefulness with GitHub Models, and squash-merges it only if all criteria pass. It comments
-with the decision and labels the PR `sop:auto-merge` or `sop:needs-human`. Failed, uncertain
+with the decision and uses `sop:auto-merge`, `sop:needs-human`, `sop:checking`,
+`sop:checks-failed` or `sop:reviewer-error` to distinguish policy decisions from infrastructure failures. Failed, uncertain
 or unavailable reviews never authorize a merge. The merge decision also retries every 15 minutes.
 
 The automatic criteria are:
@@ -93,6 +94,21 @@ Models or rate limits are reached, CI leaves the PR for review instead of mergin
 The reviewer caches a completed semantic decision only for the same head commit, model
 and policy hash. API failures are retried. A scheduled merge pass recovers missed events.
 Diagnostic manual runs of `sop-check`/`secret-scan` do not replace the mandatory PR checks.
+
+### Prohibited submissions
+
+The trusted merge job scans secrets independently, even after a failed check. Secret findings,
+explicit private metadata or distribution restrictions, and detected filesystem-root deletion
+cause rejection. Other malicious/private/non-public findings require two independent review
+contexts with matching source evidence; disagreement or reviewer errors hold the PR.
+The security reviewer also defaults to GPT-4o mini (`SOP_SECURITY_MODEL` can select its model).
+
+Confirmed prohibited submissions are closed. Only an unchanged, exclusively owned `sop/`
+branch in this repository is deleted, using an atomic lease; forks and shared branches require
+owner follow-up. Reports omit credential values and private snippets. Deleting a branch does
+not erase retained PR refs, cached copies or forks. Exposed credentials require revocation,
+and complete removal can require GitHub Support. Model reviews and static rules cannot
+prove provenance or eliminate obfuscated malicious behavior.
 
 ### Repository settings
 

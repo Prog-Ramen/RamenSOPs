@@ -46,6 +46,10 @@ def source_checks(code, permissions):
     nodes = list(ast.walk(parsed))
     imports = {alias.name.split('.')[0] for n in nodes if isinstance(n, ast.Import) for alias in n.names}
     imports |= {n.module.split('.')[0] for n in nodes if isinstance(n, ast.ImportFrom) and n.module}
+    aliases = {a.asname or a.name: a.name for n in nodes if isinstance(n, ast.Import) for a in n.names}
+    for n in nodes:
+        if isinstance(n, ast.ImportFrom) and n.module == 'sys' and any(a.name not in {'stdin','stdout','stderr'} for a in n.names):
+            human.append('import from process internals')
     extra = imports - MODULES
     if extra:
         human.append(f"imports outside the automatic-review standard-library set: {sorted(extra)}")
@@ -55,9 +59,13 @@ def source_checks(code, permissions):
     if imports & {"subprocess", "pty"}:
         visible.add("exec")
     for n in nodes:
+        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and n.id in {'eval','exec','compile','__import__','getattr','setattr','globals','locals','vars','breakpoint'}:
+            human.append('dynamic execution or introspection reference')
         if isinstance(n, ast.Attribute):
-            if n.attr.startswith('__') or (isinstance(n.value, ast.Name) and n.value.id == 'sys' and n.attr not in {'stdin', 'stdout', 'stderr'}):
+            if n.attr.startswith('__') or (isinstance(n.value, ast.Name) and aliases.get(n.value.id, n.value.id) == 'sys' and n.attr not in {'stdin', 'stdout', 'stderr'}):
                 human.append("introspection or access to process internals")
+            if n.attr in {'read_text', 'read_bytes', 'iterdir', 'glob', 'rglob', 'stat', 'lstat'}:
+                visible.add('fs:read')
             if n.attr in {"write_text", "write_bytes", "mkdir", "unlink", "rename", "replace", "rmdir", "touch"}:
                 visible.add("fs:write")
             if n.attr in {"system", "popen", "spawn", "execv", "execve"}:
@@ -284,15 +292,27 @@ def review(repo, base, head, execute=False, runner=run_case):
     return {'ok': not fail, 'auto_merge': not fail and not human and bool(sops), 'fail': fail, 'human': human, 'sops': sops, 'base': base, 'head': head, 'tests_executed': execute}
 
 def markdown(result):
-    verdict = 'Eligible for automatic merge' if result['auto_merge'] else 'Checks failed' if not result['ok'] else 'Maintainer review required'
+    verdict = ('Security rejection — proposal closed' if result.get('security', {}).get('verdict') == 'prohibited' and result.get('remediation', {}).get('closed')
+               else 'Security rejection — cleanup pending' if result.get('security', {}).get('verdict') == 'prohibited'
+               else 'Checks failed' if not result['ok'] else 'Maintainer review required' if result['human']
+               else 'Reviewer error — automatic retry pending' if result.get('semantic', {}).get('unavailable')
+               else 'Waiting for CI or branch update' if result.get('waiting')
+               else 'Eligible for automatic merge' if result['auto_merge'] else 'Maintainer review required')
     lines = ['## SOP review: ' + verdict, '', f"Reviewed commit: `{result['head']}`", '']
+    if result.get('security', {}).get('verdict') == 'prohibited':
+        categories = sorted({f['category'] for f in result['security']['findings']})
+        lines.append('Rejected categories: ' + ', '.join(categories) + '.')
+        lines.append('Cleanup: ' + result.get('remediation', {}).get('cleanup', 'pending') + '.')
+        lines.append('Closing and branch deletion do not erase cached commits, PR references or forks. Credential revocation and GitHub support/history cleanup may still be required.')
+        lines.append('')
+        return '\n'.join(lines) + '\n'
     if result.get('semantic'):
         lines.append('Semantic review: ' + str(result['semantic']['reason']).replace('\n', ' ')[:1200])
         lines.append('')
     for sop in result['sops']:
         lines.append(f"- `{sop['id']}`: {sop['tests']} concrete tests; {sop['regression_tests']} retained regression tests.")
-    for label, key in [('Must fix', 'fail'), ('Needs human review', 'human')]:
-        if result[key]:
+    for label, key in [('Must fix', 'fail'), ('Needs human review', 'human'), ('Waiting for automation', 'waiting')]:
+        if result.get(key):
             lines.extend(['', '**' + label + ':**'])
             lines.extend('- ' + str(x).replace('\n', ' ')[:500] for x in result[key])
     return '\n'.join(lines) + '\n'
