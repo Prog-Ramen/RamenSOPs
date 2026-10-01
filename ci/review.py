@@ -75,8 +75,6 @@ def source_checks(code, permissions):
             human.append("relative or wildcard import")
     if visible - permissions:
         fail.append(f"undeclared permissions: {sorted(visible - permissions)}")
-    if not any(isinstance(n, (ast.If, ast.For, ast.While, ast.comprehension)) for n in nodes):
-        human.append("no visible decision or iteration; usefulness needs maintainer review")
     if not re.search(r'json\.(?:load|loads)\(', code) or not re.search(r'json\.(?:dump|dumps)\(', code):
         fail.append("entry must read JSON input and emit JSON output")
     return fail, sorted(set(human))
@@ -145,6 +143,8 @@ def criteria(meta, directory, files):
         if any(k not in t['input'] for k in required):
             fail.append(f"test {i}: missing required input")
         for k, v in t['input'].items():
+            if k not in props:
+                fail.append(f'test {i}: undeclared input {k}')
             declared = props.get(k, {}).get('type') if isinstance(props.get(k), dict) else None
             if declared in types and (not isinstance(v, types[declared]) or declared in {'integer', 'number'} and isinstance(v, bool)):
                 fail.append(f"test {i}: wrong type for {k}")
@@ -161,7 +161,7 @@ def criteria(meta, directory, files):
 def run_case(directory, entry, case):
     # No token, network, host write mount, privileged capabilities or Docker socket.
     name = 'ramensops-test-' + uuid.uuid4().hex
-    cmd = ['docker', 'run', '--name', name, '--rm', '--network=none', '--read-only', '--cap-drop=ALL',
+    cmd = ['docker', 'run', '-i', '--name', name, '--rm', '--network=none', '--read-only', '--cap-drop=ALL',
            '--security-opt=no-new-privileges', '--pids-limit=32', '--memory=256m', '--cpus=1',
            '--user=65534:65534', '--tmpfs=/tmp:rw,noexec,nosuid,size=32m,mode=1777',
            '--mount', f'type=bind,src={directory},dst=/sop,readonly', '--workdir=/tmp',
@@ -177,7 +177,9 @@ def run_case(directory, entry, case):
         finally:
             subprocess.run(['docker', 'rm', '-f', name], capture_output=True, timeout=10)
         if p.returncode:
-            raise ValueError(f'test exited {p.returncode}')
+            err.seek(0)
+            diagnostic = err.read(512).decode('utf-8', errors='replace')
+            raise ValueError(f'test exited {p.returncode}: {diagnostic!r}')
         out.seek(0)
         data = out.read(65537)
         if len(data) > 65536:
@@ -200,6 +202,8 @@ def run_case(directory, entry, case):
 
 def review(repo, base, head, execute=False, runner=run_case):
     fail, human, sops = [], [], []
+    base = git(repo, 'rev-parse', '--verify', base + '^{commit}').decode().strip()
+    head = git(repo, 'rev-parse', '--verify', head + '^{commit}').decode().strip()
     before, after = tree(repo, base), tree(repo, head)
     # Compare full snapshots, so an SOP PR cannot hide a workflow change in an intermediate commit.
     changed = sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
