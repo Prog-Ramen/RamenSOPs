@@ -49,7 +49,7 @@ organization-specific endpoints, names or data), contain no secrets, and pass it
 
 Every SOP PR runs `sop-check` and `secret-scan`. Once both pass for the same commit,
 `sop-merge` independently reads that commit using the trusted policy on `main`, reviews its
-usefulness with GitHub Models, and squash-merges it only if all criteria pass. It comments
+usefulness with OpenAI’s GPT-4o mini API, and squash-merges it only if all criteria pass. It comments
 with the decision and uses `sop:auto-merge`, `sop:needs-human`, `sop:checking`,
 `sop:checks-failed` or `sop:reviewer-error` to distinguish policy decisions from infrastructure failures. Failed, uncertain
 or unavailable reviews never authorize a merge. The merge decision also retries every 15 minutes.
@@ -86,10 +86,15 @@ Mechanical checks, isolated tests, secret scanning and branch protection remain 
 | `sop-merge` | Runs only from `main`; verifies both checks, reviews SOP quality and merges an unchanged eligible revision. Never executes SOP code. |
 | `registry-index` | Builds metadata and SHA-256 indexes without executing SOP code, publishing the `registry` branch after each merge and hourly. |
 
-GitHub Models uses the workflow's short-lived token with `models: read`; no personal API
-key is stored. The default reviewer is `openai/gpt-4o-mini`; set repository variable
-`SOP_REVIEW_MODEL` to another supported GitHub Models model. If organization policy disables
-Models or rate limits are reached, CI leaves the PR for review instead of merging it.
+Both model reviews use OpenAI's API with the repository Actions secret `OPENAI_API_KEY`.
+Add a dedicated API key under Settings → Secrets and variables → Actions. The secret is
+available only to the trusted merge job, which checks out `main` and never executes submitted
+code. The SOP test containers receive no API key. The default reviewer is `gpt-4o-mini`;
+`SOP_REVIEW_MODEL` and `SOP_SECURITY_MODEL` can select supported OpenAI models. Existing
+`openai/` prefixes are normalized. Missing credentials, API failures or rate limits block
+merging. OpenAI API usage is billed to the key's project; set appropriate project limits.
+
+GitHub Models retired on July 30, 2026; its former inference endpoint cannot provide reviews.
 
 The reviewer caches a completed semantic decision only for the same head commit, model
 and policy hash. API failures are retried. A scheduled merge pass recovers missed events.
