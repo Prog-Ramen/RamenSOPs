@@ -116,9 +116,10 @@ Diagnostic manual runs of `sop-check`/`secret-scan` do not replace the mandatory
 
 The trusted merge job scans secrets independently, even after a failed check. Secret findings,
 explicit private metadata or distribution restrictions, and detected filesystem-root deletion
-cause rejection. Other malicious/private/non-public findings require two independent review
-contexts with matching source evidence; disagreement or reviewer errors hold the PR.
-The workflow selects Kev for security review; its uncertainty cannot justify a model-only closure.
+cause rejection. Other suspicious submissions are held when Kev flags malicious/private/
+non-public behavior or prompt injection. Kev scores do not substantiate line-level evidence
+for an automatic closure; reviewer errors also block merging. The optional OpenAI backend
+requires two evidence-grounded review contexts for model-based rejection.
 
 Confirmed prohibited submissions are closed. Only an unchanged, exclusively owned `sop/`
 branch in this repository is deleted, using an atomic lease; forks and shared branches require
