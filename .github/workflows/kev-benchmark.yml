@@ -39,7 +39,7 @@ jobs:
           HF_HOME: /home/runner/.cache/ramensops-kev
           OMP_NUM_THREADS: '4'
           MKL_NUM_THREADS: '4'
-          KEV_PREFIX_CACHE: '0'
+          KEV_PREFIX_CACHE: '1'
         run: |
           set -euo pipefail
           /usr/bin/time -v "$RUNNER_TEMP/kev-env/bin/python" ci/kev_server.py > "$RUNNER_TEMP/kev-server.log" 2> "$RUNNER_TEMP/kev-resource.log" &
