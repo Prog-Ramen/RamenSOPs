@@ -17,7 +17,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   decide:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -26,9 +25,19 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+      - name: Install pinned secret scanner for independent security triage
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o gitleaks.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz' | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Recheck and merge eligible PRs
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SOP_REVIEW_MODEL: ${{ vars.SOP_REVIEW_MODEL }}
+          SOP_SECURITY_MODEL: ${{ vars.SOP_SECURITY_MODEL }}
         run: python ci/merge.py
