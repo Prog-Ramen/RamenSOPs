@@ -1,0 +1,51 @@
+name: sop-check
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number to review again
+        required: true
+        type: number
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: sop-check-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test trusted CI policy
+        run: python -m unittest discover -s tests -q
+      - name: Resolve immutable PR revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/pulls/$PR" > "$RUNNER_TEMP/pr.json"
+          python ci/resolve.py "$RUNNER_TEMP/pr.json" >> "$GITHUB_ENV"
+          git fetch --no-tags origin "refs/pull/$PR/head"
+          test "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA"
+          git update-ref refs/ci/head "$HEAD_SHA"
+          git update-ref refs/ci/base "$(git rev-parse origin/main)"
+      - name: Prepare isolated test image
+        run: docker pull python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+      - name: Review and test SOPs
+        run: |
+          python ci/review.py --repo . --base refs/ci/base --head refs/ci/head --execute \
+            --json "$RUNNER_TEMP/verdict.json" --markdown "$RUNNER_TEMP/review.md"
+      - name: Publish review summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/review.md" ]; then cat "$RUNNER_TEMP/review.md" >> "$GITHUB_STEP_SUMMARY"; fi
