@@ -34,7 +34,9 @@ jobs:
         run: |
           set -euo pipefail
           gh api "repos/$GH_REPO/pulls/$PR" > "$RUNNER_TEMP/pr.json"
-          python ci/resolve.py "$RUNNER_TEMP/pr.json" >> "$GITHUB_ENV"
+          python ci/resolve.py "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr.env"
+          source "$RUNNER_TEMP/pr.env"
+          cat "$RUNNER_TEMP/pr.env" >> "$GITHUB_ENV"
           git fetch --no-tags origin "refs/pull/$PR/head"
           test "$(git rev-parse FETCH_HEAD)" = "$HEAD_SHA"
           git update-ref refs/ci/head "$HEAD_SHA"
