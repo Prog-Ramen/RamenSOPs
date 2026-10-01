@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 from review import markdown, review
 from semantic import decide, policy_id
+from security import assess, close_and_cleanup
 
 REPO = os.environ.get('GH_REPO', '')
 TOKEN = os.environ.get('GH_TOKEN', '')
@@ -37,21 +38,40 @@ def checked(number, sha):
             return False
     return True
 
+LABELS = {'eligible': ('sop:auto-merge', '0e8a16'), 'human': ('sop:needs-human', 'd93f0b'),
+          'checking': ('sop:checking', 'fbca04'), 'reviewer-error': ('sop:reviewer-error', 'b60205'),
+          'failed': ('sop:checks-failed', 'b60205'), 'security': ('sop:security-rejected', 'b60205')}
+
+def label_for(result):
+    if result.get('security', {}).get('verdict') == 'prohibited':
+        return LABELS['security'][0]
+    if not result['ok']:
+        return LABELS['failed'][0]
+    if result['human']:
+        return LABELS['human'][0]
+    if result.get('semantic', {}).get('unavailable'):
+        return LABELS['reviewer-error'][0]
+    if result.get('waiting'):
+        return LABELS['checking'][0]
+    return LABELS['eligible'][0] if result['auto_merge'] else LABELS['human'][0]
+
 def report(number, result):
-    label = 'sop:auto-merge' if result['auto_merge'] else 'sop:needs-human'
-    for name, color in [('sop:auto-merge', '0e8a16'), ('sop:needs-human', 'd93f0b')]:
+    label = label_for(result)
+    for name, color in LABELS.values():
         try:
             api('labels', {'name': name, 'color': color})
         except urllib.error.HTTPError as e:
             if e.code != 422:
                 raise
     api(f'issues/{number}/labels', {'labels': [label]})
-    other = 'sop:needs-human' if result['auto_merge'] else 'sop:auto-merge'
-    try:
-        api(f'issues/{number}/labels/{other}', method='DELETE')
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            raise
+    for other, _ in LABELS.values():
+        if other == label:
+            continue
+        try:
+            api(f'issues/{number}/labels/{other}', method='DELETE')
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
     body = MARKER + '\n' + markdown(result)
     if result.get('semantic') and not result['semantic'].get('unavailable'):
         cache = {'head': result['head'], 'policy': policy_id(), 'judgment': result['semantic']}
@@ -90,7 +110,7 @@ def main():
     for item in pulls:
         number = item['number']
         pr = api(f'pulls/{number}')
-        if pr['draft'] or not pr['head']['repo']:
+        if not pr['head']['repo']:
             continue
         sha = pr['head']['sha']
         git('fetch', '--no-tags', 'origin', 'main')
@@ -98,20 +118,36 @@ def main():
         if git('rev-parse', 'FETCH_HEAD') != sha:
             continue
         base = git('rev-parse', 'origin/main')
+        security = assess(Path('.'), base, sha, TOKEN)
+        if security['verdict'] == 'prohibited':
+            result = {'ok': False, 'auto_merge': False, 'head': sha, 'fail': [], 'human': [], 'sops': [], 'security': security}
+            result['remediation'] = close_and_cleanup(api, REPO, TOKEN, number, sha, security)
+            report(number, result)
+            continue
         result = review(Path('.'), base, sha, execute=False)
+        result['security'] = security
+        if security['verdict'] == 'unavailable':
+            result['auto_merge'] = False
+            result['semantic'] = {'approved': False, 'unavailable': True, 'reason': 'Security review unavailable; automatic merge is blocked.'}
+        elif security['verdict'] == 'uncertain':
+            result['auto_merge'] = False
+            result['human'].append('Security review is uncertain; maintainer review required.')
+        if pr['draft']:
+            continue
         # Require a current branch; a main change cannot reuse old successful tests.
         up_to_date = subprocess.run(['git', 'merge-base', '--is-ancestor', base, sha], capture_output=True).returncode == 0
         if not up_to_date:
-            result['human'].append('branch must be updated with current main before automatic merging')
+            result.setdefault('waiting', []).append('branch must be updated with current main before automatic merging')
             result['auto_merge'] = False
         ready = result['auto_merge'] and checked(number, sha)
         if ready:
             result['semantic'] = cached_semantic(number, sha) or decide(Path('.'), base, sha, result['sops'], TOKEN)
             if not result['semantic']['approved']:
-                result['human'].append(result['semantic']['reason'])
+                if not result['semantic'].get('unavailable'):
+                    result['human'].append(result['semantic']['reason'])
                 result['auto_merge'] = False
         elif result['auto_merge']:
-            result['human'].append('waiting for successful sop-check and secret-scan for this exact commit')
+            result.setdefault('waiting', []).append('waiting for successful sop-check and secret-scan for this exact commit')
             result['auto_merge'] = False
         report(number, result)
         summary = os.environ.get('GITHUB_STEP_SUMMARY')
