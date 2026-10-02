@@ -6,7 +6,11 @@ RUN = 'jaredpalmer/kev-4b@6cfce5c2fa4b4bd64026336ab649c5ca78857d52'
 
 def strict_encode(self, tok, rec, **kw):
     kw['strict'] = True
-    return original_encode(self, tok, rec, **kw)
+    import time
+    started = time.monotonic()
+    enc = original_encode(self, tok, rec, **kw)
+    print('Kev encoded input:', len(enc['ids']), 'tokens;', enc['seg'].count(0), 'state tokens; seconds:', round(time.monotonic() - started, 3), flush=True)
+    return enc
 
 
 if __name__ == '__main__':

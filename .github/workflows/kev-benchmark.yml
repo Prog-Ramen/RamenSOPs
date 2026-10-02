@@ -34,7 +34,7 @@ jobs:
         env:
           HF_HOME: /home/runner/.cache/ramensops-kev
         run: "$RUNNER_TEMP/kev-env/bin/python ci/kev_download.py"
-      - name: Benchmark Kev and reject known bad submissions
+      - name: Diagnose single JSONL context with twenty-minute deadline
         env:
           HF_HOME: /home/runner/.cache/ramensops-kev
           OMP_NUM_THREADS: '4'
@@ -44,8 +44,26 @@ jobs:
           set -euo pipefail
           /usr/bin/time -v "$RUNNER_TEMP/kev-env/bin/python" ci/kev_server.py > "$RUNNER_TEMP/kev-server.log" 2> "$RUNNER_TEMP/kev-resource.log" &
           kev_process=$!
-          trap 'kill "$kev_process" || true' EXIT
+          (while true; do
+            date -u
+            free -m
+            ps -eo pid,ppid,rss,pcpu,etime,comm --sort=-rss | head -10
+            vmstat 1 2
+            sleep 30
+          done) > "$RUNNER_TEMP/kev-monitor.log" 2>&1 &
+          monitor_process=$!
+          trap 'kill "$kev_process" "$monitor_process" || true' EXIT
           echo "$kev_process" > "$RUNNER_TEMP/kev.pid"
           python ci/kev_ready.py
-          python ci/kev_benchmark.py
+          python ci/kev_long_context.py
           ps -eo pid,rss,comm --sort=-rss | head -8
+      - name: Preserve diagnostic logs even on timeout
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: kev-context-diagnostics
+          path: |
+            ${{ runner.temp }}/kev-server.log
+            ${{ runner.temp }}/kev-resource.log
+            ${{ runner.temp }}/kev-monitor.log
+          retention-days: 7
