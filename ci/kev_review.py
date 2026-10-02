@@ -33,7 +33,7 @@ def ask(text, criteria, request=None):
         req = urllib.request.Request(endpoint, data=json.dumps({'model': model, 'state': text, 'questions': questions}).encode(),
                                      headers={'Content-Type': 'application/json'})
         if request is None:
-            with urllib.request.urlopen(req, timeout=300) as response:
+            with urllib.request.urlopen(req, timeout=1800) as response:
                 raw = response.read(65537)
             if len(raw) > 65536:
                 raise ValueError('oversized response')

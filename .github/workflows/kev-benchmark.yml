@@ -15,7 +15,7 @@ concurrency:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -34,7 +34,7 @@ jobs:
         env:
           HF_HOME: /home/runner/.cache/ramensops-kev
         run: "$RUNNER_TEMP/kev-env/bin/python ci/kev_download.py"
-      - name: Diagnose single JSONL context with twenty-minute deadline
+      - name: Benchmark full quality and security review
         env:
           HF_HOME: /home/runner/.cache/ramensops-kev
           OMP_NUM_THREADS: '4'
@@ -55,7 +55,7 @@ jobs:
           trap 'kill "$kev_process" "$monitor_process" || true' EXIT
           echo "$kev_process" > "$RUNNER_TEMP/kev.pid"
           python ci/kev_ready.py
-          python ci/kev_long_context.py
+          python ci/kev_benchmark.py
           ps -eo pid,rss,comm --sort=-rss | head -8
       - name: Preserve diagnostic logs even on timeout
         if: always()

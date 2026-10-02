@@ -150,3 +150,5 @@ python ci/review.py --repo . --base origin/main --head HEAD \
 Add `--execute` to run the Docker-isolated tests. The standalone CI gate has no dependency
 on unpublished Rameness code. Local `rameness sop review` remains a separate preflight;
 GitHub CI is the authoritative merge policy.
+
+Kev review requests have a 30-minute timeout each. The quality and security requests run sequentially; the workflow has a 75-minute limit to allow both requests plus setup. An isolated 2,460-token JSONL quality review completed in 9 minutes 33 seconds on the standard CPU runner. Timeouts continue to block automatic merging.
