@@ -17,7 +17,7 @@ Approve meaningful only for a useful repeatable operation with substantive behav
 KEYS = ('meaningful', 'general', 'implementation_matches_description', 'tests_cover_normal_and_edge', 'safe_with_declared_permissions')
 
 def policy_id():
-    return hashlib.sha256((Path(__file__).read_bytes() + Path(__file__).with_name('review.py').read_bytes() + Path(__file__).with_name('run_test.py').read_bytes() + MODEL.encode() + ENDPOINT.encode())).hexdigest()
+    return hashlib.sha256((Path(__file__).read_bytes() + Path(__file__).with_name('review.py').read_bytes() + Path(__file__).with_name('run_test.py').read_bytes() + MODEL.encode() + ENDPOINT.encode() + b''.join(Path(__file__).with_name(name).read_bytes() for name in ('kev_review.py', 'kev_server.py', 'kev_cpu.py', 'kev_download.py', 'kev-constraints.txt', 'setup_kev.sh', 'kev-positive.json')) + os.environ.get('SOP_REVIEW_BACKEND', 'openai').encode())).hexdigest()
 
 class ReviewUnavailable(ValueError):
     """Safe diagnostics describe the failure without exposing headers, prompts or output."""
@@ -86,7 +86,8 @@ def parse_judgment(response_data):
     return judgment
 
 def decide(repo, base, head, records, token, request=None, sleep=time.sleep):
-    if not token:
+    backend = os.environ.get('SOP_REVIEW_BACKEND', 'openai')
+    if backend != 'kev' and not token:
         return {'approved': False, 'unavailable': True, 'model': MODEL, 'reason': 'OPENAI_API_KEY is not configured; automatic merge is blocked.'}
     payload = []
     all_files = tree(repo, head)
@@ -104,6 +105,11 @@ def decide(repo, base, head, records, token, request=None, sleep=time.sleep):
     text = json.dumps(payload, ensure_ascii=False)
     if len(text) > 24000:
         return {'approved': False, 'reason': 'Submission exceeds semantic review budget; maintainer review required.'}
+    if backend == 'kev':
+        from kev_review import decide as kev_decide
+        return kev_decide(text, request=request)
+    if backend != 'openai':
+        return {'approved': False, 'unavailable': True, 'reason': 'Unknown reviewer backend; automatic merge is blocked.'}
     data = {'model': MODEL, 'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': text}],
             'temperature': 0, 'response_format': {'type': 'json_object'}, 'stream': False}
     last_error = None

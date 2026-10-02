@@ -17,13 +17,58 @@ concurrency:
 jobs:
   decide:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: false
+      - name: Skip model setup when there are no open SOP PRs
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          count=$(gh api "repos/${{ github.repository }}/pulls?state=open&base=main&per_page=100" --jq '[.[] | select(.head.ref | startswith("sop/"))] | length')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        if: steps.pending.outputs.count != '0'
+        with:
+          python-version: '3.13'
+      - name: Install pinned CPU inference environment
+        if: steps.pending.outputs.count != '0'
+        run: bash ci/setup_kev.sh
+      - name: Restore pinned model cache
+        id: model-cache
+        if: steps.pending.outputs.count != '0'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ramensops-kev
+          key: ramensops-kev4b-${{ hashFiles('ci/kev_download.py') }}
+      - name: Download and verify pinned model weights
+        if: steps.pending.outputs.count != '0'
+        env:
+          HF_HOME: /home/runner/.cache/ramensops-kev
+        run: "$RUNNER_TEMP/kev-env/bin/python ci/kev_download.py"
+      - name: Cache verified model weights
+        if: steps.pending.outputs.count != '0' && steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ramensops-kev
+          key: ramensops-kev4b-${{ hashFiles('ci/kev_download.py') }}
+      - name: Start runner-local Kev with strict context limits
+        if: steps.pending.outputs.count != '0'
+        env:
+          HF_HOME: /home/runner/.cache/ramensops-kev
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+          KEV_PREFIX_CACHE: '1'
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/kev-env/bin/python" ci/kev_server.py > "$RUNNER_TEMP/kev-server.log" 2>&1 &
+          echo "KEV_PID=$!" >> "$GITHUB_ENV"
+          echo "$!" > "$RUNNER_TEMP/kev.pid"
+          python ci/kev_ready.py
       - name: Install pinned secret scanner for independent security triage
         run: |
           set -euo pipefail
@@ -35,9 +80,12 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Recheck and merge eligible PRs
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SOP_REVIEW_BACKEND: kev
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           SOP_REVIEW_MODEL: ${{ vars.SOP_REVIEW_MODEL }}
           SOP_SECURITY_MODEL: ${{ vars.SOP_SECURITY_MODEL }}
         run: python ci/merge.py
+      - name: Stop Kev
+        if: always() && env.KEV_PID != ''
+        run: kill "$KEV_PID" || true
