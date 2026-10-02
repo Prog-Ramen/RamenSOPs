@@ -49,7 +49,7 @@ organization-specific endpoints, names or data), contain no secrets, and pass it
 
 Every SOP PR runs `sop-check` and `secret-scan`. Once both pass for the same commit,
 `sop-merge` independently reads that commit using the trusted policy on `main`, reviews its
-usefulness with OpenAI’s GPT-4o mini API, and squash-merges it only if all criteria pass. It comments
+usefulness with runner-local Kev-4B, and squash-merges it only if all criteria pass. It comments
 with the decision and uses `sop:auto-merge`, `sop:needs-human`, `sop:checking`,
 `sop:checks-failed` or `sop:reviewer-error` to distinguish policy decisions from infrastructure failures. Failed, uncertain
 or unavailable reviews never authorize a merge. The merge decision also retries every 15 minutes.
@@ -86,15 +86,29 @@ Mechanical checks, isolated tests, secret scanning and branch protection remain 
 | `sop-merge` | Runs only from `main`; verifies both checks, reviews SOP quality and merges an unchanged eligible revision. Never executes SOP code. |
 | `registry-index` | Builds metadata and SHA-256 indexes without executing SOP code, publishing the `registry` branch after each merge and hourly. |
 
-Both model reviews use OpenAI's API with the repository Actions secret `OPENAI_API_KEY`.
-Add a dedicated API key under Settings → Secrets and variables → Actions. The secret is
-available only to the trusted merge job, which checks out `main` and never executes submitted
-code. The SOP test containers receive no API key. The default reviewer is `gpt-4o-mini`;
-`SOP_REVIEW_MODEL` and `SOP_SECURITY_MODEL` can select supported OpenAI models. Existing
-`openai/` prefixes are normalized. Missing credentials, API failures or rate limits block
-merging. OpenAI API usage is billed to the key's project; set appropriate project limits.
+The trusted merge job runs pinned Kev-4B locally on a standard Ubuntu runner in CPU BF16
+storage mode, with FP32 linear arithmetic performed one layer at a time to avoid slow
+emulated BF16 operations while keeping the original weights and bounded memory use.
+It downloads the pinned Kev adapter and Qwen base once into a verified Hugging Face
+cache and restores that cache on later jobs. No OpenAI API key or externally hosted model
+is required. Source, model revisions and dependencies are pinned; restored weights are
+checked against the pinned Hub metadata before use. Oversized input is rejected instead of
+silently truncated. Missing/invalid model answers, startup failures or uncertainty block merging.
 
-GitHub Models retired on July 30, 2026; its former inference endpoint cannot provide reviews.
+The initial quality policy requires all five scores >= 0.70. Security requires all four risk
+scores <= 0.30; a model suspicion holds the PR rather than automatically closing it. These
+thresholds were smoke-tested against a valid JSONL audit and four obvious bad examples,
+not calibrated on a broad adversarial SOP dataset. Deterministic secret/private/destructive
+findings still trigger guarded automatic closure and branch cleanup. Kev does not provide
+line-level evidence to justify a model-only accusation.
+
+Only model files are cached, with a 9 GiB budget to stay below GitHub's included 10 GiB
+repository allowance. This workflow does not increase cache limits or enable paid runners.
+Other repository caches still count toward that allowance. Cache eviction means a future
+run may download again. Setup and review run only from trusted main; PR smoke benchmarks
+have read-only permissions and never save caches. Model startup is skipped when no open
+proposal branches exist. The optional OpenAI implementation remains available to callers
+that select its backend explicitly; the deployed workflow selects Kev.
 
 The reviewer caches a completed semantic decision only for the same head commit, model
 and policy hash. API failures are retried. A scheduled merge pass recovers missed events.
@@ -104,9 +118,10 @@ Diagnostic manual runs of `sop-check`/`secret-scan` do not replace the mandatory
 
 The trusted merge job scans secrets independently, even after a failed check. Secret findings,
 explicit private metadata or distribution restrictions, and detected filesystem-root deletion
-cause rejection. Other malicious/private/non-public findings require two independent review
-contexts with matching source evidence; disagreement or reviewer errors hold the PR.
-The security reviewer also defaults to GPT-4o mini (`SOP_SECURITY_MODEL` can select its model).
+cause rejection. Other suspicious submissions are held when Kev flags malicious/private/
+non-public behavior or prompt injection. Kev scores do not substantiate line-level evidence
+for an automatic closure; reviewer errors also block merging. The optional OpenAI backend
+requires two evidence-grounded review contexts for model-based rejection.
 
 Confirmed prohibited submissions are closed. Only an unchanged, exclusively owned `sop/`
 branch in this repository is deleted, using an atomic lease; forks and shared branches require
@@ -135,3 +150,5 @@ python ci/review.py --repo . --base origin/main --head HEAD \
 Add `--execute` to run the Docker-isolated tests. The standalone CI gate has no dependency
 on unpublished Rameness code. Local `rameness sop review` remains a separate preflight;
 GitHub CI is the authoritative merge policy.
+
+Kev review requests have a 30-minute timeout each. The quality and security requests run sequentially; the workflow has a 75-minute limit to allow both requests plus setup. An isolated 2,460-token JSONL quality review completed in 9 minutes 33 seconds on the standard CPU runner. Timeouts continue to block automatic merging.
