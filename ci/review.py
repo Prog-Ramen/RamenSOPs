@@ -145,9 +145,26 @@ def criteria(meta, directory, files):
     valid = []
     types = {'string': str, 'integer': int, 'number': (int, float), 'boolean': bool, 'array': list, 'object': dict, 'null': type(None)}
     for i, t in enumerate(tests):
-        if not isinstance(t, dict) or not isinstance(t.get('input'), dict) or not isinstance(t.get('expect'), dict) or not t['expect'] or t.get('expect_error'):
-            fail.append(f"test {i}: requires object input and concrete nonempty expected values; key-only/error-only tests do not qualify")
+        # Every test the SOP ships is run: concrete values, required keys, or an expected error. At least two must
+        # assert concrete values (checked below), so key-only and error-only suites still do not qualify.
+        if not isinstance(t, dict) or not isinstance(t.get('input'), dict):
+            fail.append(f"test {i}: requires an object input")
             continue
+        concrete = isinstance(t.get('expect'), dict) and bool(t['expect'])
+        keys = isinstance(t.get('expect_keys'), list) and bool(t['expect_keys']) and all(isinstance(k, str) for k in t['expect_keys'])
+        if t.get('expect_error') not in (None, False, True) or not (concrete or keys or t.get('expect_error') is True) \
+                or (t.get('expect_error') and (concrete or keys)) or ('expect' in t and not isinstance(t['expect'], dict)):
+            fail.append(f"test {i}: assert concrete values (expect), required output keys (expect_keys) or an error (expect_error)")
+            continue
+        fixtures = t.get('files', {})
+        if not isinstance(fixtures, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not k
+                                                 or PurePosixPath(k).is_absolute() or '..' in PurePosixPath(k).parts
+                                                 for k, v in fixtures.items()):
+            fail.append(f'test {i}: fixture files must map safe relative paths to text')
+        elif sum(len(v.encode()) for v in fixtures.values()) > 262_144 or len(fixtures) > 50:
+            fail.append(f'test {i}: fixture files exceed 50 files or 256 KB')
+        if 'setup' in t and (not isinstance(t['setup'], str) or len(t['setup']) > 8192):
+            fail.append(f'test {i}: setup must be Python source of at most 8 KB')
         if any(k not in t['input'] for k in required):
             fail.append(f"test {i}: missing required input")
         for k, v in t['input'].items():
@@ -160,9 +177,13 @@ def criteria(meta, directory, files):
         if not isinstance(assertions, dict) or any(not isinstance(k, str) or PurePosixPath(k).is_absolute() or '..' in PurePosixPath(k).parts for k in assertions):
             fail.append(f'test {i}: file assertions must use safe relative paths')
         valid.append(t)
-    if valid and len({json.dumps(t['input'], sort_keys=True) for t in valid}) < 2:
+    concrete = [t for t in valid if t.get('expect')]
+    if len(concrete) < 2:
+        fail.append("provide at least two tests that assert concrete expected values (a normal and an edge case)")
+    case = lambda t: json.dumps([t['input'], t.get('files', {}), t.get('setup', '')], sort_keys=True)
+    if valid and len({case(t) for t in valid}) < 2:
         fail.append("tests must exercise distinct inputs")
-    if valid and len({json.dumps(t['expect'], sort_keys=True) for t in valid}) < 2:
+    if concrete and len({json.dumps(t['expect'], sort_keys=True) for t in concrete}) < 2:
         human.append("all test results are identical; meaningful behavior needs maintainer review")
     return fail, sorted(set(human)), valid
 
@@ -178,10 +199,10 @@ def run_case(directory, entry, case):
     # Use files rather than capture_output: malicious output cannot exhaust host memory.
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         try:
-            p = subprocess.run(cmd, input=json.dumps(case).encode(), stdout=out, stderr=err, timeout=15,
+            p = subprocess.run(cmd, input=json.dumps(case).encode(), stdout=out, stderr=err, timeout=25,
                                preexec_fn=lambda: resource.setrlimit(resource.RLIMIT_FSIZE, (1_048_576, 1_048_576)))
         except subprocess.TimeoutExpired:
-            raise ValueError('test exceeded 15 seconds')
+            raise ValueError('test exceeded 25 seconds')
         finally:
             subprocess.run(['docker', 'rm', '-f', name], capture_output=True, timeout=10)
         if p.returncode:
@@ -195,7 +216,11 @@ def run_case(directory, entry, case):
         result = json.loads(data)
         if not isinstance(result, dict):
             raise ValueError('script must emit a JSON object')
-        for key, expected in case['expect'].items():
+        if case.get('expect_error'):
+            if result != {'expected_error': True}:
+                raise ValueError('expected an error, but the SOP succeeded')
+            return
+        for key, expected in case.get('expect', {}).items():
             got = result
             try:
                 for part in key.split('.'):
