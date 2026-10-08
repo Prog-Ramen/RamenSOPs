@@ -86,6 +86,26 @@ class GateTests(unittest.TestCase):
         self.put(self.meta)
         self.assertFalse(self.check()['ok'])
 
+    def test_error_and_key_tests_run_alongside_concrete_ones(self):
+        self.meta['tests'] += [{'input': {'text': 'b'}, 'expect_keys': ['upper']},
+                               {'input': {'text': 1}, 'expect_error': True}]
+        self.meta['inputs']['properties']['text'] = {}           # untyped, so the error case is a valid input
+        self.put(self.meta)
+        calls = []
+        self.assertTrue(self.check(lambda root, entry, case: calls.append(case))['ok'])
+        self.assertEqual(len(calls), 4)                          # every shipped test is executed
+
+    def test_fixture_paths_must_stay_inside_the_scratch_directory(self):
+        self.meta['tests'][0]['files'] = {'../escape.txt': 'x'}
+        self.put(self.meta)
+        self.assertFalse(self.check()['ok'])
+
+    def test_fixtures_make_otherwise_identical_inputs_distinct(self):
+        self.meta['tests'] = [{'input': {'text': 'a'}, 'files': {'a.txt': '1'}, 'expect': {'upper': 'A'}},
+                              {'input': {'text': 'a'}, 'files': {'a.txt': '2'}, 'expect': {'upper': 'A'}}]
+        self.put(self.meta)
+        self.assertNotIn('tests must exercise distinct inputs', ' '.join(self.check()['fail']))
+
     def test_identical_inputs_block(self):
         self.meta['tests'] = [self.meta['tests'][0]] * 2
         self.put(self.meta)
@@ -265,6 +285,31 @@ class ContainerAssertionTests(unittest.TestCase):
             case['expect_files']['report.json']['n'] = 4
             p = subprocess.run(cmd, cwd=root, input=json.dumps(case), text=True, capture_output=True)
             self.assertNotEqual(p.returncode, 0)
+
+    def runner(self, root, script, case):
+        cmd = [sys.executable, str(Path(review.__file__).with_name('run_test.py')), str(script)]
+        return subprocess.run(cmd, cwd=root, input=json.dumps(case), text=True, capture_output=True)
+
+    def test_fixtures_are_built_before_the_sop_runs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            script = root / 'run.py'
+            script.write_text('import json,sys\na=json.load(sys.stdin)\njson.dump({"n": len(open(a["path"],"rb").read())},sys.stdout)\n')
+            case = {'input': {'path': 'data/in.txt'}, 'files': {'data/in.txt': 'abc'}, 'expect': {'n': 3}}
+            p = self.runner(root, script, case)
+            self.assertEqual((p.returncode, json.loads(p.stdout)), (0, {'n': 3}), p.stderr)
+            case = {'input': {'path': 'img.bin'}, 'setup': 'open("img.bin","wb").write(bytes(7))', 'expect': {'n': 7}}
+            self.assertEqual(json.loads(self.runner(root, script, case).stdout), {'n': 7})
+
+    def test_expected_errors_pass_only_when_the_sop_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            script = root / 'run.py'
+            script.write_text('import json,sys\na=json.load(sys.stdin)\nsys.exit(2) if a["bad"] else json.dump({},sys.stdout)\n')
+            p = self.runner(root, script, {'input': {'bad': True}, 'expect_error': True})
+            self.assertEqual(json.loads(p.stdout), {'expected_error': True})
+            p = self.runner(root, script, {'input': {'bad': False}, 'expect_error': True})
+            self.assertEqual(json.loads(p.stdout), {'unexpected_success': True})
 
     def test_non_object_output_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
