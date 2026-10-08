@@ -63,7 +63,12 @@ The automatic criteria are:
   hard-coded answers, prompt injection or duplicate boilerplate.
 - At least two distinct inputs with concrete expected values, covering normal and edge
   behavior. Important optional behavior must also be tested. Key-only and error-only
-  assertions cannot establish eligibility. JSON file outputs can use `expect_files`.
+  assertions cannot establish eligibility, but they ship and run with the rest:
+  `expect_keys` (required output keys) and `expect_error: true` (the SOP must fail).
+  JSON file outputs can use `expect_files`.
+- A test may bring fixtures: `files` (relative path -> text, at most 50 files / 256 KB) and
+  `setup` (Python, at most 8 KB, that builds anything else, e.g. binary files). They are
+  created in the test's scratch directory before the SOP runs, inside the same sandbox.
 - Every test passes in a fresh resource-limited, non-root container with no network,
   credentials, host write mounts or Docker socket. Its scratch directory is discarded.
 - Only `compute`, `fs:read` and `fs:write` permissions, with visible file operations declared;
