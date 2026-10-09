@@ -1,0 +1,209 @@
+{
+  "id": "dev.install_headless_browser_with_cache_recovery",
+  "description": "Install or recover a browser executable in a cache directory using only Python standard library primitives. The SOP checks whether an expected cached browser executable already exists and is usable, cleans a selected cache sub-path when recovery/cleaning is requested, downloads a browser archive from a parameterised URL or local path, extracts it, and returns structured metadata about the final executable and cache state.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "required": [
+      "browser_name",
+      "browser_version",
+      "executable_name",
+      "cache_dir"
+    ],
+    "properties": {
+      "browser_name": {
+        "type": "string",
+        "description": "Browser family or engine label to organise under, such as chrome, chromium, or firefox."
+      },
+      "browser_version": {
+        "type": "string",
+        "description": "Browser version string used to build cache paths and archive URL templates."
+      },
+      "executable_name": {
+        "type": "string",
+        "description": "Expected executable filename after extraction, such as chrome, chromium, or headless_shell."
+      },
+      "cache_dir": {
+        "type": "string",
+        "description": "Cache root directory. Relative paths are resolved from the current working directory."
+      },
+      "platform": {
+        "type": "string",
+        "description": "Platform token for URL templates. Defaults to linux64."
+      },
+      "source_url_template": {
+        "type": "string",
+        "description": "Optional URL template. Placeholders may include {version}, {platform}, {browser_name}, and {executable_name}."
+      },
+      "source_path": {
+        "type": "string",
+        "description": "Optional local archive path, used instead of network download when provided."
+      },
+      "archive_type": {
+        "type": "string",
+        "enum": [
+          "zip",
+          "tar",
+          "tar.gz",
+          "auto"
+        ],
+        "description": "Archive type. auto infers from filename or magic bytes."
+      },
+      "extract_subdir": {
+        "type": "string",
+        "description": "Optional subdirectory inside the archive where the executable is located."
+      },
+      "force_download": {
+        "type": "boolean",
+        "description": "If true, ignore an existing valid cached executable and install/recover from archive."
+      },
+      "clean_cache": {
+        "type": "boolean",
+        "description": "If true, remove the resolved target cache path before attempting install/recovery."
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "description": "Optional network download timeout."
+      }
+    }
+  },
+  "outputs": {
+    "type": "object",
+    "required": [
+      "status",
+      "cache_path",
+      "browser_path"
+    ],
+    "properties": {
+      "status": {
+        "type": "string",
+        "enum": [
+          "cached",
+          "installed",
+          "recovered"
+        ]
+      },
+      "cache_path": {
+        "type": "string",
+        "description": "Resolved cache directory where the executable was found or installed."
+      },
+      "browser_path": {
+        "type": "string",
+        "description": "Path to the browser executable."
+      },
+      "source_url": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "source_kind": {
+        "type": "string",
+        "enum": [
+          "network",
+          "local",
+          "existing"
+        ]
+      },
+      "cleaned": {
+        "type": "boolean"
+      },
+      "cache_entry": {
+        "type": "string"
+      },
+      "downloaded_bytes": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "fs:read",
+    "fs:write",
+    "network",
+    "exec",
+    "side-effect"
+  ],
+  "keywords": [
+    "browser",
+    "cache",
+    "install",
+    "headless",
+    "chromium",
+    "chrome",
+    "puppeteer",
+    "playwright",
+    "cache-recovery",
+    "cache-cleanup"
+  ],
+  "tests": [
+    {
+      "input": {
+        "browser_name": "chrome",
+        "browser_version": "1.0.0",
+        "executable_name": "chrome",
+        "cache_dir": "browser_cache",
+        "source_url_template": "file://./fixtures/chrome-linux-1.0.0.zip"
+      },
+      "files": {},
+      "setup": "import zipfile\nimport os\nos.makedirs('fixtures', exist_ok=True)\nwith zipfile.ZipFile('fixtures/chrome-linux-1.0.0.zip', 'w') as zf:\n    zf.writestr('chrome', 'fake executable\\n')\nos.chmod('fixtures/chrome-linux-1.0.0.zip', 0o644)\n",
+      "expect": {
+        "status": "installed",
+        "source_url": "file://./fixtures/chrome-linux-1.0.0.zip",
+        "source_kind": "local",
+        "cleaned": false,
+        "cache_entry": "chrome/1.0.0",
+        "downloaded_bytes": null,
+        "archive_type": "zip",
+        "extracted_bytes": 16
+      }
+    },
+    {
+      "input": {
+        "browser_name": "chrome",
+        "browser_version": "1.0.0",
+        "executable_name": "chrome",
+        "cache_dir": "browser_cache"
+      },
+      "files": {},
+      "setup": "import os\nos.makedirs('browser_cache/chrome/1.0.0', exist_ok=True)\nwith open('browser_cache/chrome/1.0.0/chrome', 'w') as f:\n    f.write('cached executable\\n')\nos.chmod('browser_cache/chrome/1.0.0/chrome', 0o755)\n",
+      "expect": {
+        "status": "cached",
+        "source_url": null,
+        "source_kind": "existing",
+        "cleaned": false,
+        "cache_entry": "chrome/1.0.0",
+        "downloaded_bytes": null
+      }
+    },
+    {
+      "input": {
+        "browser_name": "chrome",
+        "browser_version": "1.0.0",
+        "executable_name": "chrome",
+        "cache_dir": "browser_cache",
+        "force_download": true,
+        "source_path": "fixtures/chrome-linux-1.0.0.zip",
+        "platform": "linux64"
+      },
+      "files": {},
+      "setup": "import zipfile\nimport os\nos.makedirs('fixtures', exist_ok=True)\nwith zipfile.ZipFile('fixtures/chrome-linux-1.0.0.zip', 'w') as zf:\n    zf.writestr('chrome', 'fake executable\\n')\nos.chmod('fixtures/chrome-linux-1.0.0.zip', 0o644)\nos.makedirs('browser_cache/chrome/1.0.0', exist_ok=True)\nwith open('browser_cache/chrome/1.0.0/chrome', 'w') as f:\n    f.write('stale executable\\n')\nos.chmod('browser_cache/chrome/1.0.0/chrome', 0o755)\n",
+      "expect": {
+        "status": "installed",
+        "source_url": null,
+        "source_kind": "local",
+        "cleaned": false,
+        "cache_entry": "chrome/1.0.0",
+        "downloaded_bytes": null,
+        "archive_type": "zip",
+        "extracted_bytes": 16
+      }
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
