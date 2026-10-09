@@ -233,6 +233,9 @@ def run_case(directory, entry, case):
             if key not in result:
                 raise ValueError(f'missing output key {key}')
 
+CATEGORY_LIMIT = 8   # most SOPs directly in one category (Dremel-style: small work at every level of the tree)
+
+
 def moved_sops(repo, base, head, before, after):
     """SOPs that disappeared from one path and reappeared at another unchanged (same files; sop.json differs only
     in its id): a reorganization, not a deletion plus a new SOP."""
@@ -330,6 +333,15 @@ def review(repo, base, head, execute=False, runner=run_case):
     if len(dirs) > 10:
         fail.append('maximum 10 changed SOPs per PR')
         dirs = set()
+    # the tree stays small at every level: a PR may not leave a category it adds SOPs to with more than LIMIT
+    # SOPs directly in it; the proposal splits it in the same PR (Rameness does this before it pushes)
+    touched = {str(PurePosixPath(d).parent) for d in dirs | set(moves.values())}
+    sop_dirs_after = {str(PurePosixPath(p).parent) for p in after if p.startswith('sops/') and p.endswith('/sop.json')}
+    for cat in sorted(touched):
+        n = sum(1 for d in sop_dirs_after if str(PurePosixPath(d).parent) == cat)
+        if n > CATEGORY_LIMIT:
+            fail.append(f'{cat}: {n} SOPs directly in it (limit {CATEGORY_LIMIT}); split it into subcategories in this '
+                        f'PR (`rameness sop rebalance --root sops`)')
     for d in sorted(dirs):
         local_fail, local_human = [], []
         try:

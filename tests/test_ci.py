@@ -262,6 +262,17 @@ class GateTests(unittest.TestCase):
         r = self.check()
         self.assertFalse(any('_node.json' in f for f in r['fail']), r['fail'])
 
+    def test_a_pr_may_not_leave_a_category_crowded(self):
+        for i in range(8):
+            d = self.root / f'sops/text/other_{i}'
+            d.mkdir(parents=True)
+            meta = copy.deepcopy(META)
+            meta['id'] = f'text.other_{i}'
+            (d / 'sop.json').write_text(json.dumps(meta))
+            (d / 'run.py').write_text(CODE)
+        r = self.check()
+        self.assertTrue(any('9 SOPs directly in it (limit 8)' in f for f in r['fail']), r['fail'])
+
     def test_generated_metadata_must_not_be_committed(self):
         (self.path / '_meta.json').write_text('{}')
         self.assertTrue(any('generated indexes' in f for f in self.check()['fail']))

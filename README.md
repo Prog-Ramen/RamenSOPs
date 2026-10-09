@@ -28,11 +28,11 @@ The registry works like a Dremel serving tree, so clients never download or scan
 - **Columnar:** a listing carries only what a client chooses by. An SOP's inputs, permissions and file hashes
   are in its `_meta.json`, fetched only for the SOPs the client picks, and checked against the hash in the
   listing.
-- **Small at every level:** after merges, the `sop-rebalance` job checks for categories with more than 8 SOPs
-  directly in them (`ci/crowded.py`, folders only). It splits each one into subcategories inside itself with
-  `rameness sop rebalance`: a model proposes the groups and Kev confirms each member. The moves arrive as a
-  "reorganize" PR for a maintainer. Moved SOPs are unchanged except for their id and keep their old ids as
-  aliases. The job needs an `OPENAI_API_KEY` secret; without one it only reports what is crowded.
+- **Small at every level:** no category holds more than 8 SOPs directly. A proposal that would push a category
+  over the limit splits it into subcategories in the same PR: Rameness's model proposes the groups and Kev
+  confirms each member before it pushes. Moved SOPs are unchanged except for their id and keep their old ids
+  as aliases. `sop-check` fails a PR that leaves a category it adds to crowded, and a PR that moves SOPs needs
+  a maintainer.
 
 `main` holds only the SOPs; the generated files (`index.json`, `_index.json`, `_meta.json`) are built after
 every merge and published, with the SOPs, to the `registry` branch that Rameness pulls from.
