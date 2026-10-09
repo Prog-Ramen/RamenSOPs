@@ -1,0 +1,427 @@
+{
+  "id": "dev.patch_test_harness_and_rerun",
+  "description": "Patch a test or probe script with literal string replacements, rerun a command (for example a Node/Playwright probe), and return a compact PASS/FAIL, stdout/stderr tail, and optional screenshot filename.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "required": [
+      "script_path",
+      "edits",
+      "rerun_cmd"
+    ],
+    "properties": {
+      "script_path": {
+        "type": "string",
+        "description": "Path of the test/probe script to patch."
+      },
+      "edits": {
+        "type": "array",
+        "description": "Literal string replacements applied to the script file.",
+        "items": {
+          "type": "object",
+          "required": [
+            "old",
+            "new"
+          ],
+          "properties": {
+            "old": {
+              "type": "string"
+            },
+            "new": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer",
+              "minimum": -1,
+              "description": "-1 means replace all occurrences."
+            },
+            "required": {
+              "type": "boolean",
+              "description": "If true, fail if old string is not found."
+            },
+            "required_match": {
+              "type": "boolean",
+              "description": "Deprecated alias for required; if present and true, fail when old is absent."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "rerun_cmd": {
+        "type": "string",
+        "description": "Shell command used to rerun the patched harness. It is executed as: sh -lc <rerun_cmd>."
+      },
+      "cwd": {
+        "type": "string",
+        "description": "Optional working directory for rerun_cmd."
+      },
+      "timeout": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Optional timeout in seconds for rerun_cmd."
+      },
+      "env": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Extra environment variables for rerun_cmd."
+      },
+      "output_filter": {
+        "type": "object",
+        "description": "Optional filtering/inspection of command output.",
+        "properties": {
+          "pass_regex": {
+            "type": "string"
+          },
+          "fail_regex": {
+            "type": "string"
+          },
+          "tail_lines": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "screenshot_pattern": {
+            "type": "string",
+            "description": "Regex used to find screenshot filenames in stdout/stderr; first match is returned."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "outputs": {
+    "type": "object",
+    "required": [
+      "ok",
+      "returncode",
+      "status",
+      "stdout_tail",
+      "stderr_tail"
+    ],
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "returncode": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "fail",
+          "unknown"
+        ]
+      },
+      "stdout_tail": {
+        "type": "string"
+      },
+      "stderr_tail": {
+        "type": "string"
+      },
+      "stdout_truncated": {
+        "type": "boolean"
+      },
+      "stderr_truncated": {
+        "type": "boolean"
+      },
+      "stdout_bytes": {
+        "type": "integer"
+      },
+      "stderr_bytes": {
+        "type": "integer"
+      },
+      "stdout_line_count": {
+        "type": "integer"
+      },
+      "stderr_line_count": {
+        "type": "integer"
+      },
+      "timed_out": {
+        "type": "boolean"
+      },
+      "timeout_seconds": {
+        "type": "integer"
+      },
+      "patch_summary": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "old",
+            "new",
+            "count",
+            "required",
+            "replaced",
+            "missing"
+          ],
+          "properties": {
+            "old": {
+              "type": "string"
+            },
+            "new": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer"
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "replaced": {
+              "type": "integer"
+            },
+            "missing": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "screenshot": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "First screenshot filename discovered in stdout or stderr, if any."
+      },
+      "command": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Command used to run the rerun command."
+      },
+      "cwd": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "error": {
+        "type": "string"
+      }
+    }
+  },
+  "permissions": [
+    "fs:read",
+    "fs:write",
+    "exec"
+  ],
+  "keywords": [
+    "test harness",
+    "patch",
+    "string replacement",
+    "node",
+    "playwright",
+    "probe",
+    "rerun",
+    "PASS",
+    "FAIL",
+    "screenshot"
+  ],
+  "tests": [
+    {
+      "input": {
+        "script_path": "probe.js",
+        "edits": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"RESULT PASS screenshot=/tmp/mc_final.png\");"
+          }
+        ],
+        "rerun_cmd": "echo $RESULT",
+        "env": {
+          "RESULT": "PASS"
+        },
+        "output_filter": {
+          "tail_lines": 5,
+          "screenshot_pattern": "screenshot=(/\\S+\\.(?:png|jpg))"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "returncode": 0,
+        "status": "pass",
+        "stdout_tail": "PASS\n",
+        "stderr_tail": "",
+        "screenshot": null,
+        "patch_summary": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"RESULT PASS screenshot=/tmp/mc_final.png\");",
+            "count": -1,
+            "required": false,
+            "replaced": 1,
+            "missing": false
+          }
+        ],
+        "stdout_line_count": 1,
+        "stderr_line_count": 0,
+        "timed_out": false
+      },
+      "files": {
+        "probe.js": "console.log(\"PLACEHOLDER\");\n"
+      }
+    },
+    {
+      "input": {
+        "script_path": "probe.js",
+        "edits": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"RESULT FAIL screenshot=/tmp/mc_final.png\");"
+          }
+        ],
+        "rerun_cmd": "echo $RESULT",
+        "env": {
+          "RESULT": "FAIL"
+        },
+        "output_filter": {
+          "tail_lines": 5,
+          "screenshot_pattern": "screenshot=(/\\S+\\.(?:png|jpg))"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "returncode": 0,
+        "status": "fail",
+        "stdout_tail": "FAIL\n",
+        "stderr_tail": "",
+        "screenshot": null,
+        "patch_summary": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"RESULT FAIL screenshot=/tmp/mc_final.png\");",
+            "count": -1,
+            "required": false,
+            "replaced": 1,
+            "missing": false
+          }
+        ],
+        "stdout_line_count": 1,
+        "stderr_line_count": 0,
+        "timed_out": false
+      },
+      "files": {
+        "probe.js": "console.log(\"PLACEHOLDER\");\n"
+      }
+    },
+    {
+      "input": {
+        "script_path": "probe.js",
+        "edits": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"SOP PASS\");"
+          }
+        ],
+        "rerun_cmd": "printf 'PASS\\nFAIL\\n' && exit 0",
+        "output_filter": {
+          "pass_regex": "SOP PASS",
+          "fail_regex": "^FAIL$"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "returncode": 0,
+        "status": "pass",
+        "stdout_tail": "PASS\nFAIL\n",
+        "stderr_tail": "",
+        "screenshot": null,
+        "patch_summary": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"SOP PASS\");",
+            "count": -1,
+            "required": false,
+            "replaced": 1,
+            "missing": false
+          }
+        ],
+        "stdout_line_count": 2,
+        "stderr_line_count": 0,
+        "timed_out": false
+      },
+      "files": {
+        "probe.js": "console.log(\"PLACEHOLDER\");\n"
+      }
+    },
+    {
+      "input": {
+        "script_path": "probe.js",
+        "edits": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"REPLACED\");",
+            "required": true
+          }
+        ],
+        "rerun_cmd": "echo PASS"
+      },
+      "expect": {
+        "ok": false,
+        "returncode": 1,
+        "status": "fail",
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "stdout_truncated": false,
+        "stderr_truncated": false,
+        "stdout_bytes": 0,
+        "stderr_bytes": 0,
+        "stdout_line_count": 0,
+        "stderr_line_count": 0,
+        "timed_out": false,
+        "timeout_seconds": 0,
+        "patch_summary": [],
+        "screenshot": null,
+        "command": null,
+        "cwd": null,
+        "error": "required replacement target missing: console.log(\"PLACEHOLDER\");"
+      },
+      "files": {
+        "probe.js": "console.log(\"NOT THE TARGET\");\n"
+      }
+    },
+    {
+      "input": {
+        "script_path": "probe.js",
+        "edits": [
+          {
+            "old": "console.log(\"PLACEHOLDER\");",
+            "new": "console.log(\"REPLACED\");"
+          }
+        ],
+        "rerun_cmd": "printf 'line1\\nline2\nline3\n'",
+        "cwd": ".",
+        "output_filter": {
+          "tail_lines": 2
+        }
+      },
+      "expect": {
+        "ok": true,
+        "returncode": 0,
+        "status": "pass",
+        "stdout_tail": "line2\nline3\n",
+        "stderr_tail": "",
+        "stdout_truncated": true,
+        "stderr_truncated": false,
+        "stdout_line_count": 3,
+        "stderr_line_count": 0,
+        "timed_out": false
+      },
+      "files": {
+        "probe.js": "console.log(\"PLACEHOLDER\");\n"
+      }
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
