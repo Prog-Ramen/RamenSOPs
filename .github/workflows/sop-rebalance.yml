@@ -1,0 +1,125 @@
+name: sop-rebalance
+# Keeps the registry tree small at every level (like a Dremel serving tree): after merges, a category with more
+# than 8 SOPs directly in it is split into subcategories inside itself. The model proposes the groups, Kev confirms
+# each member, moved SOPs keep their old ids as aliases. The moves go to a "reorganize" PR for a maintainer, since
+# they touch other contributors' SOPs. No SOP code runs here: sop-check runs the moved SOPs' tests in containers.
+on:
+  push:
+    branches: [main]
+    paths: ['sops/**']
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: sop-rebalance
+  cancel-in-progress: false
+env:
+  # the Rameness release whose `sop rebalance` this registry trusts; update deliberately
+  RAMENESS_REF: d194749175aed1862464095c46bea8776fb1cd09
+jobs:
+  rebalance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Find crowded categories (folders only, no model)
+        id: crowded
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          over=$(python ci/crowded.py sops)
+          open=$(gh api "repos/${{ github.repository }}/pulls?state=open&base=main&per_page=100" --jq '[.[] | select(.head.ref | startswith("reorganize/"))] | length')
+          echo "over=$over" >> "$GITHUB_OUTPUT"
+          if [ "$over" = "{}" ] || [ "$open" != "0" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+          echo "Crowded categories: $over; open reorganize PRs: $open" >> "$GITHUB_STEP_SUMMARY"
+      - name: Without a model key, report what needs rebalancing
+        id: key
+        if: steps.crowded.outputs.run == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "OPENAI_API_KEY is not configured. Crowded categories: ${{ steps.crowded.outputs.over }}. A maintainer can run \`rameness sop rebalance --root sops\` and open the PR." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        if: steps.key.outputs.has == 'true'
+        with:
+          python-version: '3.13'
+      - name: Install pinned CPU inference environment
+        if: steps.key.outputs.has == 'true'
+        run: bash ci/setup_kev.sh
+      - name: Restore pinned model cache
+        id: model-cache
+        if: steps.key.outputs.has == 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ramensops-kev
+          key: ramensops-kev4b-${{ hashFiles('ci/kev_download.py') }}
+      - name: Download and verify pinned model weights
+        if: steps.key.outputs.has == 'true'
+        env:
+          HF_HOME: /home/runner/.cache/ramensops-kev
+        run: "$RUNNER_TEMP/kev-env/bin/python ci/kev_download.py"
+      - name: Start runner-local Kev
+        if: steps.key.outputs.has == 'true'
+        env:
+          HF_HOME: /home/runner/.cache/ramensops-kev
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+          KEV_PREFIX_CACHE: '1'
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/kev-env/bin/python" ci/kev_server.py > "$RUNNER_TEMP/kev-server.log" 2>&1 &
+          echo "KEV_PID=$!" >> "$GITHUB_ENV"
+          python ci/kev_ready.py
+      - name: Install pinned Rameness
+        if: steps.key.outputs.has == 'true'
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/rameness-env"
+          "$RUNNER_TEMP/rameness-env/bin/pip" install --quiet "rameness @ git+https://github.com/Prog-Ramen/Rameness@${RAMENESS_REF}"
+      - name: Rebalance and open a reorganize PR
+        if: steps.key.outputs.has == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          RAMENESS_HOME: ${{ runner.temp }}/rameness-home
+          MODEL: ${{ vars.SOP_REBALANCE_MODEL || 'gpt-4o-mini' }}
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/rameness-env/bin/rameness" --provider openai --model "$MODEL" --jev kev \
+            sop rebalance --root sops --no-tests --json "$RUNNER_TEMP/moves.json" > "$RUNNER_TEMP/rebalance.txt"
+          if [ -z "$(git status --porcelain sops)" ]; then
+            echo "No grouping that Kev confirmed; nothing moved." >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          branch="reorganize/$(date -u +%Y%m%d-%H%M%S)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$branch"
+          git add -A sops
+          git commit -q -m "Reorganize crowded categories into subcategories"
+          git push -q origin "$branch"
+          {
+            echo "Categories with more than 8 SOPs directly in them were split into subcategories inside themselves."
+            echo "The model proposed the groups; Kev confirmed each member. Moved SOPs are unchanged apart from their"
+            echo "id, and keep their old ids as aliases (sops/_aliases.json)."
+            echo
+            echo '```'
+            grep -E '^(split|folded)' "$RUNNER_TEMP/rebalance.txt" || true
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+          url=$(gh pr create --base main --head "$branch" --title "Reorganize crowded SOP categories" --body-file "$RUNNER_TEMP/body.md")
+          # a PR opened with the job token starts no workflows; a dispatch does, so sop-check reviews it
+          gh workflow run sop-check.yml -f pr="${url##*/}"
+      - name: Stop Kev
+        if: always() && env.KEV_PID != ''
+        run: kill "$KEV_PID" || true

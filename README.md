@@ -12,17 +12,30 @@ general ones - scanned for secrets and reviewed by maintainers - are merged here
 
 ```
 sops/
-  index.json                   top-level categories only
-  <category>/_index.json       that category's children: sub-categories, and SOPs with
-                               metadata + per-file SHA-256 (no code)
+  index.json                   top-level categories only (+ aliases of moved SOPs)
+  _aliases.json                old SOP id -> new id, for SOPs moved by a reorganization
+  <category>/_index.json       that category's children: sub-categories, and SOPs by id,
+                               description and keywords only
   <category>/_node.json        category description, keywords, requirements
   <category>/<name>/sop.json   interface: description, inputs (JSON schema), permissions, tests
+  <category>/<name>/_meta.json generated: inputs, permissions, per-file SHA-256 (pinned by the listing)
   <category>/<name>/run.py     implementation: JSON args on stdin -> JSON result on stdout
 ```
 
-The index is sharded so clients never download the whole registry. `main` holds only the SOPs;
-the indexes (`index.json`, `_index.json`) are generated after every merge and published, with
-the SOPs, to the `registry` branch that Rameness pulls from.
+The registry works like a Dremel serving tree, so clients never download or scan the whole registry:
+
+- **Sharded:** every category has its own small listing, fetched only when a client explores it.
+- **Columnar:** a listing carries only what a client chooses by. An SOP's inputs, permissions and file hashes
+  are in its `_meta.json`, fetched only for the SOPs the client picks, and checked against the hash in the
+  listing.
+- **Small at every level:** after merges, the `sop-rebalance` job checks for categories with more than 8 SOPs
+  directly in them (`ci/crowded.py`, folders only). It splits each one into subcategories inside itself with
+  `rameness sop rebalance`: a model proposes the groups and Kev confirms each member. The moves arrive as a
+  "reorganize" PR for a maintainer. Moved SOPs are unchanged except for their id and keep their old ids as
+  aliases. The job needs an `OPENAI_API_KEY` secret; without one it only reports what is crowded.
+
+`main` holds only the SOPs; the generated files (`index.json`, `_index.json`, `_meta.json`) are built after
+every merge and published, with the SOPs, to the `registry` branch that Rameness pulls from.
 
 ## Use
 

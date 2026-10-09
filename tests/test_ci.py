@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -222,14 +223,48 @@ class GateTests(unittest.TestCase):
     def test_index_matches_sharded_format_and_hashes(self):
         index.build(self.root / 'sops')
         top = json.loads((self.root / 'sops/index.json').read_text())
-        self.assertEqual(top['format'], 3)
+        self.assertEqual(top['format'], 4)
         self.assertEqual(top['entries'][0]['id'], 'text')
         entries = json.loads((self.root / 'sops/text/_index.json').read_text())['entries']
         self.assertEqual(entries[0]['id'], 'text.upper')
-        self.assertEqual(len(entries[0]['files']), 2)
+        # columnar: the listing holds only what a client chooses by; the rest is in _meta.json, pinned by hash
+        self.assertEqual(sorted(entries[0]), ['description', 'id', 'keywords', 'meta', 'path', 'type'])
+        meta = (self.root / 'sops' / entries[0]['meta']['path']).read_bytes()
+        self.assertEqual(hashlib.sha256(meta).hexdigest(), entries[0]['meta']['sha256'])
+        self.assertEqual(len(json.loads(meta)['files']), 2)              # run.py and sop.json, not _meta.json
         first = (self.root / 'sops/text/_index.json').read_text()
         index.build(self.root / 'sops')
         self.assertEqual(first, (self.root / 'sops/text/_index.json').read_text())
+
+    def test_the_root_index_carries_aliases(self):
+        (self.root / 'sops/_aliases.json').write_text(json.dumps({'text.old_upper': 'text.upper'}))
+        index.build(self.root / 'sops')
+        self.assertEqual(json.loads((self.root / 'sops/index.json').read_text())['aliases'], {'text.old_upper': 'text.upper'})
+
+    def test_a_pure_move_is_a_reorganization_not_a_deletion(self):
+        sh(self.root, 'add', '.')
+        sh(self.root, 'commit', '-qm', 'the SOP exists')
+        self.base = sh(self.root, 'rev-parse', 'HEAD')
+        target = self.root / 'sops/text/case/upper'
+        target.parent.mkdir(parents=True)
+        (self.root / 'sops/text/case/_node.json').write_text(json.dumps({'description': 'Change letter case'}))
+        sh(self.root, 'mv', 'sops/text/upper', 'sops/text/case/upper')
+        meta = json.loads((target / 'sop.json').read_text())
+        (target / 'sop.json').write_text(json.dumps({**meta, 'id': 'text.case.upper'}))
+        (self.root / 'sops/_aliases.json').write_text(json.dumps({'text.upper': 'text.case.upper'}))
+        r = self.check()
+        self.assertTrue(r['ok'], r['fail'])
+        self.assertFalse(r['auto_merge'])                                   # a reorganization needs a maintainer
+        self.assertTrue(any('reorganization: 1 SOP(s) moved' in h for h in r['human']), r['human'])
+
+    def test_a_new_category_alongside_a_new_sop_is_fine(self):
+        (self.root / 'sops/text/_node.json').write_text(json.dumps({'description': 'Text utilities'}))
+        r = self.check()
+        self.assertFalse(any('_node.json' in f for f in r['fail']), r['fail'])
+
+    def test_generated_metadata_must_not_be_committed(self):
+        (self.path / '_meta.json').write_text('{}')
+        self.assertTrue(any('generated indexes' in f for f in self.check()['fail']))
 
 class MergeGuardTests(unittest.TestCase):
     def test_requires_latest_successful_runs_for_exact_head(self):
