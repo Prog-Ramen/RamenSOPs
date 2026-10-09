@@ -1,0 +1,101 @@
+{
+  "id": "fs.write_file",
+  "description": "Writes a new text file in the current working directory, optionally creating the parent directory. Refuses to overwrite an existing regular file unless allow_overwrite is true. Returns the absolute path, the number of bytes written, and a byte-exact hash.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "required": [
+      "filename",
+      "content"
+    ],
+    "properties": {
+      "filename": {
+        "type": "string",
+        "description": "relative path to write under the current directory; must not escape via '..'"
+      },
+      "content": {
+        "type": "string",
+        "description": "UTF-8 text to write"
+      },
+      "mkdir": {
+        "type": "boolean",
+        "description": "create parent directories if needed",
+        "default": true
+      },
+      "allow_overwrite": {
+        "type": "boolean",
+        "description": "replace an existing regular file",
+        "default": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "outputs": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "path": {
+        "type": "string"
+      },
+      "bytes_written": {
+        "type": "integer"
+      },
+      "sha256": {
+        "type": "string"
+      }
+    }
+  },
+  "permissions": [
+    "fs:write",
+    "fs:read",
+    "side-effect"
+  ],
+  "keywords": [
+    "file",
+    "write",
+    "create",
+    "index",
+    "text",
+    "directory",
+    "overwrite",
+    "sha256"
+  ],
+  "tests": [
+    {
+      "input": {
+        "filename": "index.html",
+        "content": "<h1>ok</h1>"
+      },
+      "expect": {
+        "ok": true,
+        "bytes_written": 11,
+        "sha256": "cdcfcebbd2e25ba02c5cdf5d8aabc828df5b138149f8f3638b7e97fe97cc2d36"
+      }
+    },
+    {
+      "input": {
+        "filename": "sub/dir/nested.txt",
+        "content": "hello",
+        "mkdir": true
+      },
+      "expect": {
+        "ok": true,
+        "bytes_written": 5,
+        "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+      }
+    },
+    {
+      "input": {
+        "filename": "../escape.txt",
+        "content": "bad"
+      },
+      "expect_error": true
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
