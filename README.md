@@ -37,6 +37,9 @@ The registry works like a Dremel serving tree, so clients never download or scan
 `main` holds only the SOPs; the generated files (`index.json`, `_index.json`, `_meta.json`) are built after
 every merge and published, with the SOPs, to the `registry` branch that Rameness pulls from.
 
+How it all fits together, with diagrams of the review, merge and publishing flow, is in
+[docs/architecture.md](docs/architecture.md).
+
 ## Use
 
 Rameness pulls from this registry on its own, and only what a task needs. When no local SOP
