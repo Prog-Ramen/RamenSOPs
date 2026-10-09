@@ -1,0 +1,188 @@
+{
+  "id": "dev.javascript_syntax_check_then_tests",
+  "description": "Syntax-check JavaScript source files with `node --check` and then run the requested unit/headless/e2E/audit test commands from a working directory. Captures stdout/stderr for each test, applies per-command regular-expression filters and tail limits, and returns one structured JSON summary. Fails non-zero when a syntax check or a test command exits non-zero.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "required": [
+      "work_dir"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "work_dir": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Explicit JavaScript source files or glob patterns. If omitted, js/*.js is used."
+      },
+      "test_scripts": {
+        "type": "array",
+        "description": "Commands to run after syntax checks. Items may be plain command strings or objects.",
+        "items": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "filter": {
+                  "type": "string"
+                },
+                "tail": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          ]
+        }
+      },
+      "global_filter": {
+        "type": "string",
+        "description": "Optional default regular-expression filter for every test script."
+      },
+      "global_tail": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Optional default tail limit for every test script."
+      }
+    }
+  },
+  "outputs": {
+    "status": "passed | failed",
+    "work_dir": "absolute working directory",
+    "checks": "syntax check results",
+    "tests": "test script results"
+  },
+  "permissions": [
+    "fs:read",
+    "exec"
+  ],
+  "keywords": [
+    "javascript",
+    "node",
+    "syntax",
+    "tests",
+    "headless",
+    "e2e",
+    "audit"
+  ],
+  "tests": [
+    {
+      "input": {
+        "work_dir": ".",
+        "sources": [
+          "js/*.js"
+        ],
+        "test_scripts": [
+          "node tests/headless.mjs"
+        ]
+      },
+      "files": {
+        "js/player.js": "const x = 1;\n",
+        "js/main.js": "function a() { return x; }\n",
+        "tests/headless.mjs": "console.log('OK headless');\nprocess.exit(0);\n"
+      },
+      "setup": "pass\nif True:\n    pass\nelse:\n    pass\n",
+      "expect": {
+        "status": "passed",
+        "checks": [
+          {
+            "path": "./js/main.js",
+            "exit_code": 0,
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "path": "./js/player.js",
+            "exit_code": 0,
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "tests": [
+          {
+            "command": "node tests/headless.mjs",
+            "exit_code": 0,
+            "passed": true,
+            "output": "OK headless\n"
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "work_dir": ".",
+        "sources": [
+          "js/*.js",
+          "tests/*.mjs"
+        ],
+        "test_scripts": [
+          "node tests/broken.mjs"
+        ],
+        "global_tail": 1
+      },
+      "files": {
+        "js/good.js": "let a=1;",
+        "tests/broken.mjs": "console.log('FAIL line1');\nconsole.log('FAIL line2');\nprocess.exit(1);"
+      },
+      "setup": "pass",
+      "expect_error": true
+    },
+    {
+      "input": {
+        "work_dir": ".",
+        "sources": [
+          "missing/*.js"
+        ],
+        "test_scripts": []
+      },
+      "files": {},
+      "setup": "pass",
+      "expect": {
+        "status": "passed",
+        "checks": [],
+        "tests": []
+      }
+    },
+    {
+      "input": {},
+      "files": {},
+      "setup": "pass",
+      "expect_error": true
+    },
+    {
+      "input": {
+        "work_dir": "."
+      },
+      "files": {},
+      "setup": "pass",
+      "expect": {
+        "status": "passed",
+        "checks": [],
+        "tests": []
+      }
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
