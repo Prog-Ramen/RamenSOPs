@@ -1,0 +1,249 @@
+{
+  "id": "dev.run_local_syntax_and_unit_tests",
+  "description": "Syntax-check JavaScript files (using `node --check` when available, with a stdlib fallback), run a local JavaScript unit test file, and return a compact pass/fail report including a tail of the test output. The script accepts a list of JS files or glob patterns, a unit-test path, and how many lines of test output to return.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "required": [
+      "js_files",
+      "unit_test_path"
+    ],
+    "properties": {
+      "js_files": {
+        "type": "array",
+        "description": "JavaScript files to syntax-check. Each item may be a path or glob.",
+        "items": {
+          "type": "string"
+        }
+      },
+      "unit_test_path": {
+        "type": "string",
+        "description": "Path to the local JavaScript unit-test file to run."
+      },
+      "tail": {
+        "type": "integer",
+        "description": "Number of trailing lines to return from the combined stdout/stderr of the unit-test run.",
+        "minimum": 0
+      },
+      "node_path": {
+        "type": "string",
+        "description": "Optional executable to use for `node`. Defaults to `node` found in PATH."
+      }
+    }
+  },
+  "outputs": {
+    "type": "object",
+    "required": [
+      "syntax_ok",
+      "syntax_checked",
+      "syntax_failed",
+      "test_path",
+      "test_pass",
+      "test_exit_code",
+      "test_output_tail"
+    ],
+    "properties": {
+      "syntax_ok": {
+        "type": "boolean"
+      },
+      "syntax_checked": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "syntax_failed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "syntax_errors": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "syntax_method": {
+        "type": "string",
+        "enum": [
+          "node --check",
+          "stdlib-regex"
+        ]
+      },
+      "test_path": {
+        "type": "string"
+      },
+      "test_pass": {
+        "type": "boolean"
+      },
+      "test_exit_code": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "test_output_tail": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "test_output_full_lines": {
+        "type": "integer"
+      }
+    }
+  },
+  "permissions": [
+    "fs:read",
+    "exec"
+  ],
+  "keywords": [
+    "javascript",
+    "syntax",
+    "unit-tests",
+    "tests",
+    "dev",
+    "node",
+    "local",
+    "check",
+    "tail"
+  ],
+  "tests": [
+    {
+      "input": {
+        "js_files": [
+          "*.js"
+        ],
+        "unit_test_path": "unit.test.js",
+        "tail": 2
+      },
+      "expect": {
+        "syntax_ok": true,
+        "syntax_checked": [
+          "a.js",
+          "b.js"
+        ],
+        "syntax_failed": [],
+        "syntax_errors": {},
+        "syntax_method": "node --check",
+        "test_path": "unit.test.js",
+        "test_pass": true,
+        "test_exit_code": 0,
+        "test_output_tail": [
+          "all tests passed",
+          "summary: 2 ok"
+        ],
+        "test_output_full_lines": 2
+      },
+      "files": {
+        "a.js": "function a() { return 1; }\n",
+        "b.js": "function b() { return a() + 1; }\n",
+        "unit.test.js": "let passed = 0, failed = 0;\nfunction ok() { passed += 1; }\nfunction fail() { failed += 1; }\n\nif (1 === 1) ok();\nok();\n\nconsole.log('all tests passed');\nconsole.log('summary: ' + passed + ' ok');\nif (failed > 0) process.exit(1);\n"
+      }
+    },
+    {
+      "input": {
+        "js_files": [
+          "*.js"
+        ],
+        "unit_test_path": "unit.test.js",
+        "tail": 2
+      },
+      "expect": {
+        "syntax_ok": false,
+        "syntax_checked": [
+          "bad.js",
+          "good.js"
+        ],
+        "syntax_failed": [
+          "bad.js"
+        ],
+        "syntax_errors": {
+          "bad.js": "SyntaxError: Unexpected end of input"
+        },
+        "syntax_method": "node --check",
+        "test_path": "unit.test.js",
+        "test_pass": false,
+        "test_exit_code": 1,
+        "test_output_tail": [
+          "1 failure",
+          "2/3 tests passed"
+        ],
+        "test_output_full_lines": 4
+      },
+      "files": {
+        "good.js": "function ok() { return true; }\n",
+        "bad.js": "function broken() { return 1;\n",
+        "unit.test.js": "let passed = 0;\nlet failed = 0;\nfunction ok() { passed += 1; }\nfunction fail() { failed += 1; }\nok(); ok(); fail();\nconsole.log(passed + ' passed');\nconsole.log('summary: ' + (passed + failed) + ' total, ' + passed + ' passed');\nconsole.log(failed + ' failure');\nconsole.log(passed + '/' + (passed + failed) + ' tests passed');\nif (failed > 0) process.exit(1);\n"
+      }
+    },
+    {
+      "input": {
+        "js_files": [
+          "src/*.js"
+        ],
+        "unit_test_path": "tests/unit.test.js",
+        "tail": 0
+      },
+      "expect": {
+        "syntax_ok": true,
+        "syntax_checked": [
+          "src/main.js"
+        ],
+        "syntax_failed": [],
+        "syntax_errors": {},
+        "syntax_method": "node --check",
+        "test_path": "tests/unit.test.js",
+        "test_pass": true,
+        "test_exit_code": 0,
+        "test_output_tail": [],
+        "test_output_full_lines": 1
+      },
+      "files": {
+        "src/main.js": "export function main() { return 1; }\n",
+        "tests/unit.test.js": "if (1 === 1) { console.log('ok'); } else { console.log('not ok'); process.exit(1); }\n"
+      }
+    },
+    {
+      "input": {
+        "js_files": [
+          "missing/*.js"
+        ],
+        "unit_test_path": "missing.js",
+        "tail": 1
+      },
+      "expect_error": true
+    },
+    {
+      "input": {
+        "js_files": [
+          "not-a-list",
+          "x.js"
+        ],
+        "unit_test_path": "x.js",
+        "tail": 1
+      },
+      "expect_error": true
+    },
+    {
+      "input": {
+        "js_files": [
+          "*.js"
+        ],
+        "unit_test_path": "unit.test.js",
+        "tail": "not-an-int"
+      },
+      "expect_error": true
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "requirements": {
+    "commands": [
+      "node"
+    ]
+  },
+  "scope": "public"
+}
