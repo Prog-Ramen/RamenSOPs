@@ -1,0 +1,296 @@
+{
+  "id": "dev.browser_test_fix_edit_pass",
+  "description": "Run a browser/Node test suite from a parameterised working directory, capture failing assertion lines using a configurable failure filter, optionally apply parameterised fix commands between reruns, and return whether the suite passes.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "required": [
+      "workdir",
+      "test_command",
+      "failure_filter"
+    ],
+    "properties": {
+      "workdir": {
+        "type": "string",
+        "description": "Directory in which to run the test command. Defaults to '.'."
+      },
+      "test_command": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Command used to run the browser test suite, e.g. ['node', 'tests/browser-tests.mjs'] or a shell string."
+      },
+      "failure_filter": {
+        "type": "string",
+        "description": "Regex or ERE pattern used to select failing lines from combined output. Default '^  FAIL|FAILED|AssertionError'."
+      },
+      "max_attempts": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Maximum number of test runs if fix commands are supplied. Default 1."
+      },
+      "fix_commands": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": "Optional list of bash fix commands to execute between test attempts."
+      },
+      "tail_chars": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Optional maximum character length for each reported failing line."
+      }
+    }
+  },
+  "outputs": {
+    "type": "object",
+    "required": [
+      "passed",
+      "attempts",
+      "failing_assertions"
+    ],
+    "properties": {
+      "passed": {
+        "type": "boolean"
+      },
+      "attempts": {
+        "type": "integer"
+      },
+      "failing_assertions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "test_output_tail": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "permissions": [
+    "fs:read",
+    "fs:write",
+    "exec",
+    "side-effect"
+  ],
+  "keywords": [
+    "browser",
+    "node",
+    "test",
+    "assertion",
+    "fail",
+    "rerun",
+    "fix",
+    "suite"
+  ],
+  "tests": [
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": "bash tests/browser-tests.sh",
+        "failure_filter": "^  FAIL|passed,",
+        "max_attempts": 1
+      },
+      "files": {
+        "tests/browser-tests.sh": "#!/usr/bin/env bash\necho '  FAIL survival: expected 10, got 0'\necho 'passed, 0'\nexit 1\n"
+      },
+      "setup": "import os\nos.chmod('tests/browser-tests.sh', 0o755)\n",
+      "expect_error": true
+    },
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": "bash tests/browser-tests.sh",
+        "failure_filter": "^  FAIL|passed,",
+        "max_attempts": 2,
+        "fix_commands": [
+          [
+            "sed",
+            "-i",
+            "/FAIL survival/d",
+            "tests/browser-tests.sh"
+          ]
+        ]
+      },
+      "files": {
+        "tests/browser-tests.sh": "#!/usr/bin/env bash\necho '  FAIL survival: expected 10, got 0'\necho 'passed, 0'\nexit 1\n"
+      },
+      "setup": "import os\nos.chmod('tests/browser-tests.sh', 0o755)\n",
+      "expect_error": true
+    },
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": "bash tests/browser-tests.sh",
+        "failure_filter": "^  FAIL|FAILED|AssertionError",
+        "max_attempts": 1
+      },
+      "files": {
+        "tests/browser-tests.sh": "#!/usr/bin/env bash\necho 'AssertionError: inventory opens'\necho 'FAILED'\nexit 1\n"
+      },
+      "setup": "import os\nos.chmod('tests/browser-tests.sh', 0o755)\n",
+      "expect_error": true
+    },
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": "bash tests/browser-tests.sh",
+        "failure_filter": "^  FAIL|passed,",
+        "tail_chars": 30,
+        "max_attempts": 1
+      },
+      "files": {
+        "tests/browser-tests.sh": "#!/usr/bin/env bash\necho '  FAIL very long assertion message that should be truncated'\necho 'passed, 0'\nexit 1\n"
+      },
+      "setup": "import os\nos.chmod('tests/browser-tests.sh', 0o755)\n",
+      "expect_error": true
+    },
+    {
+      "input": {
+        "workdir": "missing",
+        "test_command": "bash tests/browser-tests.sh",
+        "failure_filter": "^  FAIL|passed,"
+      },
+      "expect_error": true
+    },
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": [
+          "bash",
+          "tests/passing-browser-tests.sh"
+        ],
+        "failure_filter": "^  FAIL|FAILED|AssertionError",
+        "max_attempts": 1
+      },
+      "files": {
+        "tests/passing-browser-tests.sh": "#!/usr/bin/env bash\necho 'passed, 3'\nexit 0\n"
+      },
+      "setup": "import os\nos.chmod('tests/passing-browser-tests.sh', 0o755)\n",
+      "expect": {
+        "passed": true,
+        "attempts": 1,
+        "failing_assertions": [],
+        "test_output_tail": [
+          "passed, 3"
+        ]
+      }
+    },
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": [
+          "bash",
+          "tests/failing-browser-tests.sh"
+        ],
+        "failure_filter": "^  FAIL|FAILED|AssertionError",
+        "tail_chars": 16,
+        "max_attempts": 1
+      },
+      "files": {
+        "tests/failing-browser-tests.sh": "#!/usr/bin/env bash\necho 'AssertionError: inventory page title mismatch'\necho 'FAILED'\nexit 1\n"
+      },
+      "setup": "import os\nos.chmod('tests/failing-browser-tests.sh', 0o755)\n",
+      "expect": {
+        "passed": false,
+        "attempts": 1,
+        "failing_assertions": [
+          "AssertionError: ",
+          "FAILED"
+        ],
+        "test_output_tail": [
+          "AssertionError: inventory page title mismatch",
+          "FAILED",
+          "EXITCODE:1"
+        ]
+      }
+    },
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": [
+          "bash",
+          "tests/flaky-browser-tests.sh"
+        ],
+        "failure_filter": "^  FAIL|FAILED|AssertionError",
+        "max_attempts": 2,
+        "fix_commands": [
+          [
+            "sed",
+            "-i",
+            "/FAILED/d",
+            "tests/flaky-browser-tests.sh"
+          ]
+        ]
+      },
+      "files": {
+        "tests/flaky-browser-tests.sh": "#!/usr/bin/env bash\necho 'AssertionError: initial inventory state mismatch'\necho 'FAILED'\nexit 1\n"
+      },
+      "setup": "import os\nos.chmod('tests/flaky-browser-tests.sh', 0o755)\n",
+      "expect": {
+        "passed": false,
+        "attempts": 2,
+        "failing_assertions": [
+          "AssertionError: initial inventory state mismatch"
+        ],
+        "test_output_tail": [
+          "AssertionError: initial inventory state mismatch",
+          "EXITCODE:1"
+        ]
+      }
+    },
+    {
+      "input": {
+        "workdir": ".",
+        "test_command": [
+          "bash",
+          "tests/passing-with-failure-line.sh"
+        ],
+        "failure_filter": "^  FAIL|FAILED|AssertionError",
+        "max_attempts": 1
+      },
+      "files": {
+        "tests/passing-with-failure-line.sh": "#!/usr/bin/env bash\necho '  FAIL should not matter when exit code is 0'\nexit 0\n"
+      },
+      "setup": "import os\nos.chmod('tests/passing-with-failure-line.sh', 0o755)\n",
+      "expect": {
+        "passed": true,
+        "attempts": 1,
+        "failing_assertions": [
+          "  FAIL should not matter when exit code is 0"
+        ],
+        "test_output_tail": [
+          "  FAIL should not matter when exit code is 0"
+        ]
+      }
+    },
+    {
+      "input": {
+        "workdir": "nested",
+        "test_command": [
+          "bash",
+          "tests/deep/nested-fail.sh"
+        ],
+        "failure_filter": "^  FAIL|FAILED|AssertionError",
+        "max_attempts": 1
+      },
+      "files": {
+        "tests/deep/nested-fail.sh": "#!/usr/bin/env bash\necho 'AssertionError: nested workdir fixture'\nexit 1\n"
+      },
+      "setup": "import os\nos.makedirs('tests/deep', exist_ok=True)\nos.chmod('tests/deep/nested-fail.sh', 0o755)\n",
+      "expect_error": true
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
