@@ -13,7 +13,7 @@
     "properties": {
       "path": {
         "type": "string",
-        "description": "Relative or absolute path to the PNG screenshot file to verify. No organization-specific hostnames or credentials are accepted."
+        "description": "Path to the PNG screenshot to check, relative to the working directory or absolute."
       },
       "sample_cols": {
         "type": "integer",

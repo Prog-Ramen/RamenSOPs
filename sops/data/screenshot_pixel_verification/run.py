@@ -15,7 +15,7 @@ CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}       # PNG colour type -> samples per
 
 def die(msg):
     sys.stderr.write(str(msg) + "\n")
-    sys.exit(1)
+    raise SystemExit(1)
 
 
 def chunks(data):
