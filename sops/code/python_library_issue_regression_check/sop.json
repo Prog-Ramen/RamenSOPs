@@ -1,0 +1,175 @@
+{
+  "id": "code.python_library_issue_regression_check",
+  "description": "Run a Python library's standard-library unittest suite and user-specified issue scenario checks after edits, repeatedly if needed, and report a compact JSON pass/fail summary.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "properties": {
+      "root": {
+        "type": "string",
+        "description": "Project root relative to the current working directory; use '.' for the current directory."
+      },
+      "package_path": {
+        "type": "string",
+        "description": "Python package/module path or parent directory that must be importable during tests/checks. Use '.' if package is in the current directory."
+      },
+      "tests_dir": {
+        "type": "string",
+        "description": "Directory passed to `python -m unittest discover -s`; defaults to 'tests'."
+      },
+      "top_level_dir": {
+        "type": "string",
+        "description": "Directory passed to `python -m unittest discover -t`; defaults to '.'."
+      },
+      "suite_command": {
+        "type": "string",
+        "description": "Optional shell command used instead of unittest discover. If present, it is run with `sh -c` inside the root."
+      },
+      "issue_checks": {
+        "type": "array",
+        "description": "Issue scenario checks. Each item must contain a `name` and either Python source `code` run with `python -c`, or a script path `script` run with the project interpreter.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "script": {
+              "type": "string"
+            },
+            "argv": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "cwd": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+      "max_attempts": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 1
+      },
+      "timeout": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 120
+      }
+    },
+    "required": [
+      "package_path",
+      "issue_checks"
+    ]
+  },
+  "outputs": {
+    "passed": {
+      "type": "boolean"
+    },
+    "attempts": {
+      "type": "integer"
+    },
+    "suite": {
+      "type": "object"
+    },
+    "issue_checks": {
+      "type": "array"
+    }
+  },
+  "permissions": [
+    "exec",
+    "fs:read"
+  ],
+  "keywords": [
+    "python",
+    "library",
+    "unittest",
+    "regression",
+    "issues",
+    "tests",
+    "scenario"
+  ],
+  "tests": [
+    {
+      "input": {
+        "package_path": ".",
+        "tests_dir": "tests",
+        "top_level_dir": ".",
+        "issue_checks": [
+          {
+            "name": "round-up",
+            "code": "from invoicer import Invoice, Line, Money\ninv = Invoice('S', 'C', discount_percent=1)\ninv.add(Line('A', 't', Money(50), 1))\ninv.add(Line('B', 'u', Money(1), 1, taxable=False))\nassert inv.taxable_amount() == Money(50)"
+          }
+        ]
+      },
+      "expect": {
+        "passed": true,
+        "attempts": 1
+      },
+      "files": {
+        "tests/__init__.py": "",
+        "tests/test_smoke.py": "import unittest\nfrom invoicer import Invoice\n\nclass Smoke(unittest.TestCase):\n    def test_smoke(self):\n        self.assertEqual(Invoice('x', 'y').number, 'x')\n",
+        "invoicer/__init__.py": "from __future__ import annotations\n\nfrom dataclasses import dataclass\n\n\nclass Money:\n    def __init__(self, cents):\n        self.cents = int(cents)\n\n    @classmethod\n    def of(cls, text):\n        return cls(round(float(text) * 100))\n\n    def __eq__(self, other):\n        if not isinstance(other, Money):\n            return NotImplemented\n        return self.cents == other.cents\n\n    def __add__(self, other):\n        return Money(self.cents + other.cents)\n\n    def __mul__(self, other):\n        return Money(round(self.cents * other))\n\n\n@dataclass\nclass Line:\n    ref: str\n    name: str\n    price: Money\n    qty: int = 1\n    taxable: bool = True\n\n\nclass Invoice:\n    def __init__(self, number, client, discount_percent=0, tax_rate=0):\n        self.number = number\n        self.client = client\n        self.discount_percent = discount_percent\n        self.tax_rate = tax_rate\n        self.lines = []\n\n    def add(self, line):\n        self.lines.append(line)\n        return self\n\n    def taxable_amount(self):\n        total = Money(0)\n        for line in self.lines:\n            if line.taxable:\n                total = total + line.price * line.qty\n        if self.discount_percent:\n            total = total * (1 - self.discount_percent / 100)\n        return total\n\n    def tax(self):\n        return self.taxable_amount() * self.tax_rate\n\n    def total(self):\n        untaxed = Money(0)\n        for line in self.lines:\n            if not line.taxable:\n                untaxed = untaxed + line.price * line.qty\n        return self.taxable_amount() + self.tax() + untaxed\n"
+      },
+      "setup": ""
+    },
+    {
+      "input": {
+        "package_path": "pkg",
+        "tests_dir": "tests",
+        "issue_checks": [
+          {
+            "name": "missing-script",
+            "script": "missing.py"
+          }
+        ]
+      },
+      "expect": {
+        "passed": false,
+        "attempts": 1
+      },
+      "files": {
+        "pkg/issue_package/__init__.py": "",
+        "tests/__init__.py": "",
+        "tests/test_pkg.py": "import unittest\nimport issue_package\n\nclass P(unittest.TestCase):\n    def test_pkg(self):\n        self.assertTrue(True)\n"
+      },
+      "setup": ""
+    },
+    {
+      "input": {
+        "package_path": ".",
+        "tests_dir": "tests",
+        "issue_checks": [
+          {
+            "name": "suite-failure",
+            "code": "print('ok')"
+          }
+        ],
+        "suite_command": "python -m unittest discover -s tests"
+      },
+      "expect": {
+        "passed": false,
+        "attempts": 1
+      },
+      "files": {
+        "tests/__init__.py": "",
+        "tests/test_fail.py": "import unittest\n\nclass Fail(unittest.TestCase):\n    def test_fail(self):\n        self.assertEqual(1, 2)\n"
+      },
+      "setup": ""
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
