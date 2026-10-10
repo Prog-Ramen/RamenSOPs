@@ -1,0 +1,40 @@
+{
+ "format": 4,
+ "id": "data",
+ "entries": [
+  {
+   "type": "sop",
+   "id": "data.jsonl_audit",
+   "description": "Validate arbitrary JSON Lines text using standard JSON object rules. Return counts of physical lines, blank lines and objects, plus 1-based invalid-JSON and non-object line numbers. Accept text and an optional report output path. Handle empty input, CRLF and Unicode; reject nonstandard numeric constants. Uses only the Python standard library, with all input and output locations supplied by the caller.",
+   "keywords": [],
+   "path": "data/jsonl_audit",
+   "meta": {
+    "path": "data/jsonl_audit/_meta.json",
+    "sha256": "dcf1838bfab0aacda0c69dc0c20d405e5f80f749082a414960dbd6cb4b96b54f"
+   }
+  },
+  {
+   "type": "sop",
+   "id": "data.screenshot_pixel_verification",
+   "description": "Check a rendered screenshot without image libraries: decode a PNG with the Python standard library (8- and 16-bit, grey, RGB, alpha and palette images), sample pixels on a grid, and report whether it is blank, made of flat colour blocks, or has real content.",
+   "keywords": [
+    "screenshot",
+    "pixel",
+    "verification",
+    "png",
+    "render",
+    "browser",
+    "blank",
+    "block",
+    "grid",
+    "sampling",
+    "decode"
+   ],
+   "path": "data/screenshot_pixel_verification",
+   "meta": {
+    "path": "data/screenshot_pixel_verification/_meta.json",
+    "sha256": "c522425a4dcdfd8df14b3b4e099def0103ee9051f2a7339459498c236a1aa3f8"
+   }
+  }
+ ]
+}

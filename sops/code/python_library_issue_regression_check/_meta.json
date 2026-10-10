@@ -1,0 +1,89 @@
+{
+ "files": [
+  {
+   "path": "code/python_library_issue_regression_check/run.py",
+   "sha256": "127960736b90b24b49adb0a9985f5636e1b686d4f9418133e4586e6bd1bfd433"
+  },
+  {
+   "path": "code/python_library_issue_regression_check/sop.json",
+   "sha256": "17899a2c24ba59498ff4d630ce3aa593e0befd7dcd172c7ccc63c421caa0eaf8"
+  }
+ ],
+ "inputs": {
+  "properties": {
+   "issue_checks": {
+    "description": "Issue scenario checks. Each item must contain a `name` and either Python source `code` run with `python -c`, or a script path `script` run with the project interpreter.",
+    "items": {
+     "properties": {
+      "argv": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "code": {
+       "type": "string"
+      },
+      "cwd": {
+       "type": "string"
+      },
+      "name": {
+       "type": "string"
+      },
+      "script": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "name"
+     ],
+     "type": "object"
+    },
+    "type": "array"
+   },
+   "max_attempts": {
+    "default": 1,
+    "maximum": 10,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "package_path": {
+    "description": "Python package/module path or parent directory that must be importable during tests/checks. Use '.' if package is in the current directory.",
+    "type": "string"
+   },
+   "root": {
+    "description": "Project root relative to the current working directory; use '.' for the current directory.",
+    "type": "string"
+   },
+   "suite_command": {
+    "description": "Optional shell command used instead of unittest discover. If present, it is run with `sh -c` inside the root.",
+    "type": "string"
+   },
+   "tests_dir": {
+    "description": "Directory passed to `python -m unittest discover -s`; defaults to 'tests'.",
+    "type": "string"
+   },
+   "timeout": {
+    "default": 120,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "top_level_dir": {
+    "description": "Directory passed to `python -m unittest discover -t`; defaults to '.'.",
+    "type": "string"
+   }
+  },
+  "required": [
+   "package_path",
+   "issue_checks"
+  ],
+  "type": "object"
+ },
+ "kind": "script",
+ "permissions": [
+  "exec",
+  "fs:read"
+ ],
+ "status": "validated",
+ "version": "1.0.0"
+}
