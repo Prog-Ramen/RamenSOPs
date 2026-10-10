@@ -1,354 +1,178 @@
 #!/usr/bin/env python3
-import sys, json, zlib, struct
+"""Check a rendered screenshot without image libraries: decode the PNG with the standard library, sample pixels
+on a grid, and report whether it is blank, made of flat colour blocks, or has real content.
+
+Input (JSON on stdin): path; optional sample_cols, sample_rows (sampling grid, default 8 x 6); optional
+block_cols, block_rows, block_threshold (split the image into blocks and report which are a single flat colour).
+"""
+import json
+import struct
+import sys
+import zlib
+
+CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}       # PNG colour type -> samples per pixel
+
 
 def die(msg):
     sys.stderr.write(str(msg) + "\n")
     sys.exit(1)
 
-def read_png(path):
-    with open(path, "rb") as f:
-        return f.read()
 
-def read_chunks(data):
+def chunks(data):
     if data[:8] != b"\x89PNG\r\n\x1a\n":
         die("not a PNG file")
-    off = 8
-    chunks = {}
-    idat = []
+    off, out, idat = 8, {}, []
     while off + 12 <= len(data):
-        (length,) = struct.unpack(">I", data[off:off+4])
-        typ = data[off+4:off+8]
-        chunk = data[off+8:off+8+length]
-        crc = data[off+8+length:off+12+length]
-        if length < 0 or off + 12 + length > len(data):
+        length, typ = struct.unpack(">I4s", data[off:off + 8])
+        if off + 12 + length > len(data):
             die("PNG chunk truncation")
-        if typ == b"IHDR":
-            chunks[typ.decode("ascii")] = chunk
-        elif typ == b"PLTE":
-            chunks[typ.decode("ascii")] = chunk
-        elif typ == b"IDAT":
-            idat.append(chunk)
+        body = data[off + 8:off + 8 + length]
+        if typ == b"IDAT":
+            idat.append(body)
+        elif typ in (b"IHDR", b"PLTE"):
+            out[typ] = body
+        elif typ == b"IEND":
+            break
         off += 12 + length
-    if not idat:
-        die("no IDAT")
-    return chunks, idat
+    if b"IHDR" not in out or not idat:
+        die("missing IHDR or IDAT")
+    return out, b"".join(idat)
 
-def decode_png(data, path):
-    chunks, idat = read_chunks(data)
-    ihdr = chunks.get("IHDR")
-    if not ihdr:
-        die("missing IHDR")
-    width = struct.unpack(">I", ihdr[0:4])[0]
-    height = struct.unpack(">I", ihdr[4:8])[0]
+
+def paeth(a, b, c):
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    return b if pb <= pc else c
+
+
+def unfilter(raw, height, stride, bpp):
+    """Undo PNG's per-row filters. The left / upper-left neighbours are one PIXEL (bpp bytes) back."""
+    rows, prev = [], bytearray(stride)
+    for y in range(height):
+        start = y * (stride + 1)
+        kind, line = raw[start], bytearray(raw[start + 1:start + 1 + stride])
+        for x in range(stride):
+            a = line[x - bpp] if x >= bpp else 0
+            b = prev[x]
+            c = prev[x - bpp] if x >= bpp else 0
+            if kind == 1:
+                line[x] = (line[x] + a) & 0xFF
+            elif kind == 2:
+                line[x] = (line[x] + b) & 0xFF
+            elif kind == 3:
+                line[x] = (line[x] + (a + b) // 2) & 0xFF
+            elif kind == 4:
+                line[x] = (line[x] + paeth(a, b, c)) & 0xFF
+            elif kind != 0:
+                die("unknown PNG filter %d" % kind)
+        rows.append(line)
+        prev = line
+    return rows
+
+
+def decode(data):
+    found, idat = chunks(data)
+    width, height, depth, ctype, comp, filt, interlace = struct.unpack(">IIBBBBB", found[b"IHDR"])
     if width == 0 or height == 0:
         die("zero-size PNG")
-    bit_depth = ihdr[8]
-    color_type = ihdr[9]
-    compression = ihdr[10]
-    filter = ihdr[11]
-    interlace = ihdr[12]
-    if compression != 0 or filter != 0:
-        die("unsupported compression/filter")
-    if interlace != 0:
-        die("interlaced PNG not supported")
-    if bit_depth not in (8, 16):
-        die("only 8/16-bit PNG is supported")
-    if color_type not in (0, 2, 3, 4, 6):
-        die("unsupported color type")
-    if color_type == 3 and "PLTE" not in chunks:
+    if comp != 0 or filt != 0 or interlace != 0:
+        die("unsupported PNG (compression, filter method or interlacing)")
+    if ctype not in CHANNELS or depth not in ((8,) if ctype == 3 else (8, 16)):
+        die("unsupported PNG: colour type %d at %d bits" % (ctype, depth))
+    if ctype == 3 and b"PLTE" not in found:
         die("palette PNG without PLTE")
     try:
-        raw = zlib.decompress(b"".join(idat))
-    except Exception as e:
-        die("IDAT inflate failed: %r" % (e,))
+        raw = zlib.decompress(idat)
+    except zlib.error as e:
+        die("IDAT inflate failed: %s" % e)
+    size = depth // 8
+    bpp = CHANNELS[ctype] * size
+    stride = width * bpp
+    if len(raw) < (stride + 1) * height:
+        die("PNG image data is too short")
+    rows = unfilter(raw, height, stride, bpp)
+    pal = found.get(b"PLTE", b"")
 
-    img = []
+    def pixel(x, y):
+        row, i = rows[y], x * bpp
+        s = [row[i + k * size] for k in range(CHANNELS[ctype])]   # the high byte of each sample
+        if ctype == 3:
+            j = s[0] * 3
+            if j + 3 > len(pal):
+                die("palette index out of range")
+            return tuple(pal[j:j + 3])
+        if ctype in (0, 4):
+            return (s[0], s[0], s[0])
+        return (s[0], s[1], s[2])
 
-    if color_type in (0, 4):
-        cpp = 2 if color_type == 4 else 1
-        stride = width * cpp
-        raw_stride = stride + 1
-        if len(raw) != raw_stride * height:
-            die("raw PNG size mismatch")
-        prev_row = [0] * stride
-        for y in range(height):
-            filt = raw[y*raw_stride]
-            line = raw[y*raw_stride + 1 : (y+1)*raw_stride]
-            row = []
-            for x in range(stride):
-                left = row[x-1] if x > 0 else 0
-                up = prev_row[x]
-                upleft = prev_row[x-1] if x > 0 else 0
-                v = line[x]
-                if filt == 1:
-                    v = (v + left) & 0xff
-                elif filt == 2:
-                    v = (v + up) & 0xff
-                elif filt == 3:
-                    v = (v + (left + up)//2) & 0xff
-                elif filt == 4:
-                    a = left + up - upleft
-                    if 0 <= a <= 255: paeth = a
-                    elif a < 0: paeth = -a
-                    else: paeth = a
-                    if paeth == left: p = left
-                    elif paeth == up: p = up
-                    else: p = upleft
-                    v = (v + p) & 0xff
-                row.append(v)
-            prev_row = row[:]
-            for x in range(width):
-                v = row[x*cpp]
-                if bit_depth == 16:
-                    v1 = (row[x*cpp] << 8) | row[x*cpp+1]
-                    v = int(v1 / 257.0)
-                img.append((v, v, v))
-        return img
+    return width, height, depth, ctype, pixel
 
-    if color_type == 3:
-        pal = chunks["PLTE"]
-        stride = width
-        raw_stride = stride + 1
-        if len(raw) != raw_stride * height:
-            die("raw PNG size mismatch")
-        prev_row = [0] * stride
-        for y in range(height):
-            filt = raw[y*raw_stride]
-            line = raw[y*raw_stride + 1 : (y+1)*raw_stride]
-            row = []
-            for x in range(stride):
-                left = row[x-1] if x > 0 else 0
-                up = prev_row[x]
-                upleft = prev_row[x-1] if x > 0 else 0
-                v = line[x]
-                if filt == 1:
-                    v = (v + left) & 0xff
-                elif filt == 2:
-                    v = (v + up) & 0xff
-                elif filt == 3:
-                    v = (v + (left + up)//2) & 0xff
-                elif filt == 4:
-                    a = left + up - upleft
-                    if 0 <= a <= 255: paeth = a
-                    elif a < 0: paeth = -a
-                    else: paeth = a
-                    if paeth == left: p = left
-                    elif paeth == up: p = up
-                    else: p = upleft
-                    v = (v + p) & 0xff
-                row.append(v)
-            prev_row = row[:]
-            for x in range(width):
-                idx = row[x]
-                off = idx*3
-                if off+2 >= len(pal):
-                    die("palette index out of range")
-                img.append(tuple(pal[off:off+3]))
-        return img
 
-    cpp = 3 if color_type == 2 else 4
-    stride = width * cpp
-    raw_stride = stride + 1
-    if len(raw) != raw_stride * height:
-        die("raw PNG size mismatch")
-    prev_row = [0] * stride
-    for y in range(height):
-        filt = raw[y*raw_stride]
-        line = raw[y*raw_stride + 1 : (y+1)*raw_stride]
-        row = []
-        for x in range(stride):
-            left = row[x-1] if x > 0 else 0
-            up = prev_row[x]
-            upleft = prev_row[x-1] if x > 0 else 0
-            v = line[x]
-            if filt == 1:
-                v = (v + left) & 0xff
-            elif filt == 2:
-                v = (v + up) & 0xff
-            elif filt == 3:
-                v = (v + (left + up)//2) & 0xff
-            elif filt == 4:
-                a = left + up - upleft
-                if 0 <= a <= 255: paeth = a
-                elif a < 0: paeth = -a
-                else: paeth = a
-                if paeth == left: p = left
-                elif paeth == up: p = up
-                else: p = upleft
-                v = (v + p) & 0xff
-            row.append(v)
-        prev_row = row[:]
-        for x in range(width):
-            base = x*cpp
-            r = row[base]
-            g = row[base+1]
-            b = row[base+2]
-            if bit_depth == 16:
-                r = int(((row[base] << 8) | row[base+1]) / 257.0)
-                g = int(((row[base+2] << 8) | row[base+3]) / 257.0)
-                b = int(((row[base+4] << 8) | row[base+5]) / 257.0)
-            img.append((r, g, b))
-    return img
+def blank_like(r, g, b):
+    """Near black, near white, or light grey: what an empty page or an unrendered canvas looks like."""
+    luma = int(0.299 * r + 0.587 * g + 0.114 * b + 0.5)
+    return luma < 40 or luma > 215 or (max(r, g, b) - min(r, g, b) < 20 and luma >= 140)
 
-def pixel(img, width, x, y):
-    idx = y * width + x
-    if idx < 0 or idx >= len(img):
-        die("pixel index out of range")
-    return img[idx]
 
-def classify(r,g,b):
-    mn = min(r,g,b)
-    mx = max(r,g,b)
-    sat = mx - mn
-    luma = int((0.299*r + 0.587*g + 0.114*b + 0.5))
-    if luma < 40 or luma > 215:
-        return "."
-    if sat < 20 and 140 <= luma <= 215:
-        return "."
-    if b > 150 and b > g > r:
-        return "S"
-    if g > 90 and g > r > b:
-        return "G"
-    if r > 110 and r >= g > b:
-        return "D"
-    if luma > 80:
-        return "?"
-    return "."
+def flat_blocks(pixel, width, height, cols, rows, threshold):
+    grid = []
+    for by in range(rows):
+        y0, y1 = by * height // rows, max(by * height // rows + 1, (by + 1) * height // rows)
+        line = []
+        for bx in range(cols):
+            x0, x1 = bx * width // cols, max(bx * width // cols + 1, (bx + 1) * width // cols)
+            vals = [pixel(x, y) for y in range(y0, y1, max(1, (y1 - y0) // 8))
+                    for x in range(x0, x1, max(1, (x1 - x0) // 8))]
+            r0, g0, b0 = vals[0]
+            dev = max(max(abs(r - r0), abs(g - g0), abs(b - b0)) for r, g, b in vals)
+            line.append(dev <= threshold)
+        grid.append(line)
+    return grid
 
-def block_stats(img, width, height, bc, br, thresh):
-    rows = []
-    for by in range(br):
-        y0 = int(by*height/br)
-        y1 = int((by+1)*height/br)
-        if y1 <= y0: y1 = y0 + 1
-        if y1 > height: y1 = height
-        cols = []
-        for bx in range(bc):
-            x0 = int(bx*width/bc)
-            x1 = int((bx+1)*width/bc)
-            if x1 <= x0: x1 = x0 + 1
-            if x1 > width: x1 = width
-            vals = []
-            ys = list(range(y0, min(y1, height), max(1, (y1-y0)//8)))
-            xs = list(range(x0, min(x1, width), max(1, (x1-x0)//8)))
-            for yy in ys:
-                for xx in xs:
-                    vals.append(pixel(img, width, xx, yy))
-            if not vals:
-                die("empty block sample")
-            r0,g0,b0 = vals[0]
-            dev = max(
-                max(abs(r - r0) for (r,g,b) in vals),
-                max(abs(g - g0) for (r,g,b) in vals),
-                max(abs(b - b0) for (r,g,b) in vals),
-            )
-            cols.append(dev <= thresh)
-        rows.append(cols)
-    return rows
 
 def main():
     try:
         args = json.load(sys.stdin)
-    except Exception as e:
-        die("invalid JSON input: %r" % (e,))
+    except ValueError as e:
+        die("invalid JSON input: %s" % e)
     path = args.get("path")
-    if not path or not isinstance(path, str):
+    if not isinstance(path, str) or not path:
         die("path is required")
-    sample_cols = int(args.get("sample_cols", 8))
-    sample_rows = int(args.get("sample_rows", 6))
-    block_cols = args.get("block_cols")
-    block_rows = args.get("block_rows")
-    block_threshold = float(args.get("block_threshold", 32.0))
-    if sample_cols < 1 or sample_rows < 1 or sample_cols > 512 or sample_rows > 512:
+    cols, rows = int(args.get("sample_cols", 8)), int(args.get("sample_rows", 6))
+    if not (1 <= cols <= 512 and 1 <= rows <= 512):
         die("sample grid out of range")
     try:
-        data = read_png(path)
-        img = decode_png(data, path)
-    except Exception as e:
-        die("could not decode PNG: %r" % (e,))
-    chunks, idat = read_chunks(data)
-    ihdr = chunks["IHDR"]
-    width = struct.unpack(">I", ihdr[0:4])[0]
-    height = struct.unpack(">I", ihdr[4:8])[0]
-    bit_depth = ihdr[8]
-    color_type = ihdr[9]
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        die("could not read %s: %s" % (path, e))
+    width, height, depth, ctype, pixel = decode(data)
 
-    samples = []
-    for j in range(sample_rows):
-        y = int((j + 0.5) * height / sample_rows)
-        for i in range(sample_cols):
-            x = int((i + 0.5) * width / sample_cols)
-            samples.append(pixel(img, width, x, y))
-    if not samples:
-        die("no samples")
+    samples = [pixel(int((i + 0.5) * width / cols), int((j + 0.5) * height / rows))
+               for j in range(rows) for i in range(cols)]
+    blank_ratio = sum(1 for p in samples if blank_like(*p)) / float(len(samples))
+    first = samples[0]
+    uniform = all(max(abs(p[k] - first[k]) for k in range(3)) < 5 for p in samples)
+    blank = blank_ratio >= 0.95 or uniform
+    mean = [sum(p[k] for p in samples) // len(samples) for k in range(3)]
 
-    blank_count = 0
-    grid_rows = []
-    for j in range(sample_rows):
-        row = []
-        for i in range(sample_cols):
-            idx = j * sample_cols + i
-            r,g,b = samples[idx]
-            cls = classify(r,g,b)
-            if cls == ".":
-                blank_count += 1
-            row.append(cls)
-        grid_rows.append("".join(row))
-
-    blank_ratio = blank_count / float(len(samples))
-    blank = (blank_ratio >= 0.95) or (
-        max(samples, key=lambda p:p[0]) is min(samples, key=lambda p:p[0])
-        and all(abs(p[0]-samples[0][0])<5 and abs(p[1]-samples[0][1])<5 and abs(p[2]-samples[0][2])<5 for p in samples)
-    )
-
-    mean_rgb = tuple(sum(c[k] for c in samples)//len(samples) for k in range(3))
-    mean_luma = int((0.299*mean_rgb[0] + 0.587*mean_rgb[1] + 0.114*mean_rgb[2] + 0.5))
-
-    block_rows_out = None
-    uniform_count = 0
-    block_total = 0
-    if block_cols and block_rows:
-        if block_cols < 2 or block_rows < 2:
+    out = {"path": path, "width": width, "height": height, "color_type": ctype, "bit_depth": depth,
+           "sample_cols": cols, "sample_rows": rows, "blank": blank, "blank_ratio": round(blank_ratio, 4),
+           "mean_rgb": mean, "mean_luma": int(0.299 * mean[0] + 0.587 * mean[1] + 0.114 * mean[2] + 0.5)}
+    flat_share = 0.0
+    bc, br = args.get("block_cols"), args.get("block_rows")
+    if bc and br:
+        if int(bc) < 2 or int(br) < 2:
             die("block grid too small")
-        block_rows_out = block_stats(img, width, height, int(block_cols), int(block_rows), block_threshold)
-        for br in block_rows_out:
-            for uniform in br:
-                block_total += 1
-                if uniform:
-                    uniform_count += 1
+        grid = flat_blocks(pixel, width, height, int(bc), int(br), float(args.get("block_threshold", 32.0)))
+        flat_share = sum(map(sum, grid)) / float(int(bc) * int(br))
+        out.update(block_cols=int(bc), block_rows=int(br), uniform_blocks=round(flat_share, 4), block_uniformity=grid)
+    # blank: nothing rendered; flat: almost every block is one solid colour (e.g. textures missing); else content
+    out["verdict"] = "blank" if blank else ("flat" if flat_share >= 0.9 else "content")
+    sys.stdout.write(json.dumps(out, separators=(",", ":")) + "\n")
 
-    uniform_blocks = (uniform_count / float(block_total)) if block_total else 0.0
-
-    if blank:
-        verdict = "blank"
-    elif block_total and uniform_blocks >= 0.90:
-        verdict = "incorrect"
-    elif len(samples) < width * height * 0.01:
-        verdict = "sparse"
-    else:
-        verdict = "content"
-
-    out = {
-        "path": path,
-        "width": width,
-        "height": height,
-        "color_type": color_type,
-        "bit_depth": bit_depth,
-        "sample_cols": sample_cols,
-        "sample_rows": sample_rows,
-        "blank": bool(blank),
-        "blank_ratio": round(blank_ratio, 4),
-        "mean_rgb": list(mean_rgb),
-        "mean_luma": mean_luma,
-        "verdict": verdict,
-    }
-    if block_rows_out is not None:
-        out["block_cols"] = int(block_cols)
-        out["block_rows"] = int(block_rows)
-        out["uniform_blocks"] = round(uniform_blocks, 4)
-        out["block_uniformity"] = block_rows_out
-
-    sys.stdout.write(json.dumps(out, separators=(",",":")) + "\n")
 
 if __name__ == "__main__":
     main()
