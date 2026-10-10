@@ -233,6 +233,58 @@ def run_case(directory, entry, case):
             if key not in result:
                 raise ValueError(f'missing output key {key}')
 
+CATEGORY_LIMIT = 8   # most SOPs directly in one category (Dremel-style: small work at every level of the tree)
+
+
+def moved_sops(repo, base, head, before, after):
+    """SOPs that disappeared from one path and reappeared at another unchanged (same files; sop.json differs only
+    in its id): a reorganization, not a deletion plus a new SOP."""
+    def sop_dirs(snap):
+        return {str(PurePosixPath(p).parent) for p in snap if p.startswith('sops/') and PurePosixPath(p).name == 'sop.json'}
+    def signature(snap, ref, d):
+        files = tuple(sorted((p[len(d) + 1:], snap[p][2]) for p in snap if p.startswith(d + '/') and not p.endswith('/sop.json')))
+        try:
+            meta = json.loads(blob(repo, ref, d + '/sop.json'))
+        except (ValueError, subprocess.SubprocessError):
+            return None
+        meta.pop('id', None)
+        return files, json.dumps(meta, sort_keys=True)
+    gone = sop_dirs(before) - sop_dirs(after)
+    new = sop_dirs(after) - sop_dirs(before)
+    if not gone or not new:
+        return {}
+    by_sig = {}
+    for d in sorted(new):
+        by_sig.setdefault(signature(after, head, d), []).append(d)
+    moves = {}
+    for d in sorted(gone):
+        sig = signature(before, base, d)
+        if sig and by_sig.get(sig):
+            target = by_sig[sig].pop(0)
+            if json.loads(blob(repo, head, target + '/sop.json')).get('id') == '.'.join(PurePosixPath(target).parts[1:]):
+                moves[d] = target
+    return moves
+
+
+def structure_problem(repo, head, path, after):
+    """A category's _node.json or the registry's _aliases.json must be the small JSON it claims to be."""
+    if path not in after:
+        return None
+    try:
+        data = json.loads(blob(repo, head, path))
+    except (ValueError, subprocess.SubprocessError):
+        return 'not valid JSON'
+    if path.endswith('_aliases.json'):
+        ok = isinstance(data, dict) and all(isinstance(k, str) and isinstance(v, str) and len(k) < 200 and len(v) < 200
+                                            for k, v in data.items())
+        return None if ok else 'aliases must map old SOP ids to new ones'
+    if not isinstance(data, dict) or not isinstance(data.get('description', ''), str) or len(data.get('description', '')) > 400:
+        return 'a category needs a short text description'
+    if not isinstance(data.get('keywords', []), list) or set(data) - {'description', 'keywords', 'requires'}:
+        return 'only description, keywords and requires are allowed'
+    return None
+
+
 def review(repo, base, head, execute=False, runner=run_case):
     fail, human, sops = [], [], []
     base = git(repo, 'rev-parse', '--verify', base + '^{commit}').decode().strip()
@@ -246,12 +298,27 @@ def review(repo, base, head, execute=False, runner=run_case):
         fail.append('too many changed files (maximum 100)')
     if any(not p.startswith('sops/') for p in changed):
         human.append('changes outside sops/: maintenance PR requires maintainer review')
+    moves = moved_sops(repo, base, head, before, after)
+    in_move = {p for old, new in moves.items() for p in (*[q for q in before if q.startswith(old + '/')],
+                                                          *[q for q in after if q.startswith(new + '/')])}
+    if moves:
+        human.append(f"reorganization: {len(moves)} SOP(s) moved unchanged into new categories "
+                     f"({', '.join(f'{a} -> {b}' for a, b in sorted(moves.items())[:5])}"
+                     f"{', ...' if len(moves) > 5 else ''}); maintainer review")
     dirs = set()
     for p in changed:
-        if not p.startswith('sops/'):
+        if not p.startswith('sops/') or p in in_move:
             continue
-        if PurePosixPath(p).name in {'index.json', '_index.json'}:
+        name = PurePosixPath(p).name
+        if name in {'index.json', '_index.json', '_meta.json'}:
             fail.append(f'{p}: generated indexes must not be committed')
+            continue
+        if name == '_node.json' or p == 'sops/_aliases.json':
+            problem = structure_problem(repo, head, p, after)
+            if problem:
+                fail.append(f'{p}: {problem}')
+            elif p in before or (p == 'sops/_aliases.json'):
+                human.append(f'{p}: category structure changed; maintainer review')
             continue
         if p not in after:
             human.append(f'{p}: file deletion requires maintainer review')
@@ -266,6 +333,15 @@ def review(repo, base, head, execute=False, runner=run_case):
     if len(dirs) > 10:
         fail.append('maximum 10 changed SOPs per PR')
         dirs = set()
+    # the tree stays small at every level: a PR may not leave a category it adds SOPs to with more than LIMIT
+    # SOPs directly in it; the proposal splits it in the same PR (Rameness does this before it pushes)
+    touched = {str(PurePosixPath(d).parent) for d in dirs | set(moves.values())}
+    sop_dirs_after = {str(PurePosixPath(p).parent) for p in after if p.startswith('sops/') and p.endswith('/sop.json')}
+    for cat in sorted(touched):
+        n = sum(1 for d in sop_dirs_after if str(PurePosixPath(d).parent) == cat)
+        if n > CATEGORY_LIMIT:
+            fail.append(f'{cat}: {n} SOPs directly in it (limit {CATEGORY_LIMIT}); split it into subcategories in this '
+                        f'PR (`rameness sop rebalance --root sops`)')
     for d in sorted(dirs):
         local_fail, local_human = [], []
         try:
