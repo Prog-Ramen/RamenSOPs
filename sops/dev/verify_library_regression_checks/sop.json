@@ -1,0 +1,158 @@
+{
+  "id": "dev.verify_library_regression_checks",
+  "description": "Run configured library regression checks: execute existing tests and inline checks to verify issue fixes without breaking existing behaviour.",
+  "kind": "script",
+  "entry": "run.py",
+  "inputs": {
+    "type": "object",
+    "properties": {
+      "test_command": {
+        "type": "string",
+        "description": "shell command to run existing test suite"
+      },
+      "inline_check_script": {
+        "type": "string",
+        "description": "shell command for inline regression checks"
+      },
+      "issue_list": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "reported issues to verify"
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "cwd": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "test_command",
+      "inline_check_script"
+    ]
+  },
+  "outputs": {
+    "type": "object",
+    "properties": {
+      "ok": {
+        "type": "boolean"
+      },
+      "test_exit_code": {
+        "type": "integer"
+      },
+      "inline_exit_code": {
+        "type": "integer"
+      },
+      "passed_issues": {
+        "type": "array"
+      },
+      "failed_issues": {
+        "type": "array"
+      }
+    },
+    "permissions": [
+      "exec"
+    ],
+    "script": "#!/usr/bin/env python3\nimport json, subprocess, sys\n\nraw = sys.stdin.read()\ntry:\n    args = json.loads(raw)\nexcept Exception:\n    sys.stderr.write(\"invalid JSON input\\n\")\n    sys.exit(2)\n\ncfg = args.get(\"config\", {})\ntimeout = int(cfg.get(\"timeout\", 30))\nchecks = [\"tests\", \"inline\"]\nstatus = {}\nfor name in checks:\n    cmd = cfg.get(name + \"_command\", cfg.get(name))\n    if cmd:\n        try:\n            res = subprocess.run(cmd, shell=True, capture_output=True, timeout=timeout)\n            status[name] = \"pass\" if res.returncode == 0 else \"fail\"\n        except Exception as e:\n            status[name] = \"fail\"\n            sys.stderr.write(str(e) + \"\n\")\n    else:\n        status[name] = \"skip\"\n    if status[name] == \"fail\":\n        sys.stderr.write(name + \" failed\n\")\n        sys.exit(1)\nprint(json.dumps({\"ok\": True, \"status\": status}))\n",
+    "tests": [
+      {
+        "input": {
+          "config": {
+            "timeout": 20,
+            "tests_command": "true",
+            "inline_command": "true"
+          }
+        },
+        "expect": {
+          "status": {
+            "tests": "pass",
+            "inline": "pass"
+          }
+        }
+      },
+      {
+        "input": {
+          "config": {
+            "tests_command": "false"
+          }
+        },
+        "expect_error": true
+      }
+    ]
+  },
+  "permissions": [
+    "exec"
+  ],
+  "keywords": [
+    "regression",
+    "tests",
+    "inline checks",
+    "validation",
+    "library"
+  ],
+  "tests": [
+    {
+      "input": {
+        "issue_list": [
+          "issue1"
+        ],
+        "test_command": "python -m unittest discover -v --failfast --locals",
+        "inline_check_script": "python -c \"import sys; print('inline-ok')\""
+      },
+      "expect": {
+        "ok": true,
+        "test_exit_code": 0,
+        "inline_exit_code": 0,
+        "passed_issues": [
+          "issue1"
+        ],
+        "failed_issues": []
+      },
+      "files": {
+        "test_sample.py": "import unittest\n\nclass TestSample(unittest.TestCase):\n    def test_ok(self):\n        self.assertEqual(1, 1)\n"
+      }
+    },
+    {
+      "input": {
+        "issue_list": [
+          "issue1"
+        ],
+        "test_command": "false",
+        "inline_check_script": "python -c \"import sys; print('inline-ok')\""
+      },
+      "expect": {
+        "ok": false,
+        "test_exit_code": 1,
+        "inline_exit_code": 0,
+        "passed_issues": [],
+        "failed_issues": [
+          "issue1"
+        ]
+      }
+    },
+    {
+      "input": {
+        "issue_list": [
+          "issue1"
+        ],
+        "test_command": "python -c \"import sys; print('test-ok')\"",
+        "inline_check_script": "false"
+      },
+      "expect": {
+        "ok": false,
+        "test_exit_code": 0,
+        "inline_exit_code": 1,
+        "passed_issues": [],
+        "failed_issues": [
+          "issue1"
+        ]
+      }
+    }
+  ],
+  "status": "validated",
+  "version": "1.0.0",
+  "scope": "public"
+}
