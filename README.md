@@ -173,3 +173,30 @@ on unpublished Rameness code. Local `rameness sop review` remains a separate pre
 GitHub CI is the authoritative merge policy.
 
 Kev review requests have a 30-minute timeout each. The quality and security requests run sequentially; the workflow has a 75-minute limit to allow both requests plus setup. An isolated 2,460-token JSONL quality review completed in 9 minutes 33 seconds on the standard CPU runner. Timeouts continue to block automatic merging.
+
+## Monitoring
+
+After every merge (and hourly) the `registry-index` workflow publishes a `metrics` file with the index: SOPs by
+category, status and kind, the tests they ship, the permissions they need, open pull requests, and when and from
+which commit the registry was built. Prometheus can scrape it straight from GitHub:
+
+```yaml
+scrape_configs:
+  - job_name: ramensops
+    scheme: https
+    metrics_path: /Prog-Ramen/RamenSOPs/registry/metrics
+    scrape_interval: 15m
+    static_configs: [{targets: ["raw.githubusercontent.com"]}]
+```
+
+Import [`dashboards/ramensops.json`](dashboards/ramensops.json) in Grafana and pick that Prometheus datasource.
+
+## License and disclaimer
+
+Licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Prog-Ramen.
+
+The SOPs here are scripts that run on your machines. They are provided **as is, without warranty of any kind**;
+automated review and tests reduce but do not remove the risk of a faulty or harmful SOP. You are solely responsible
+for reviewing an SOP before you run it, for the permissions you grant it, and for the consequences of running it.
+To the maximum extent permitted by law, the authors, contributors and Prog-Ramen are not liable for any damages
+arising from their use. See [NOTICE](NOTICE) and sections 7 and 8 of the license.
