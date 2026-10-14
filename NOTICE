@@ -1,0 +1,14 @@
+RamenSOPs
+Copyright 2026 Prog-Ramen
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use these files except in compliance
+with the License. A copy is in the LICENSE file and at http://www.apache.org/licenses/LICENSE-2.0.
+
+DISCLAIMER
+
+The SOPs in this registry are scripts that run on your machines when an agent or a person uses them. They are
+provided "AS IS", without warranties or conditions of any kind, as set out in sections 7 and 8 of the License.
+Automated review and tests reduce but do not remove the risk of a faulty or harmful SOP. You alone are responsible
+for reviewing an SOP before you run it, for the permissions you grant it, and for every consequence of running it.
+To the maximum extent permitted by law, the authors, contributors and Prog-Ramen shall not be liable for any claim,
+damages or other liability arising from the use of these files.
