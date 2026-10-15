@@ -6,8 +6,8 @@
   <a href="https://github.com/Prog-Ramen/RamenSOPs/actions/workflows/sop-check.yml"><img src="https://github.com/Prog-Ramen/RamenSOPs/actions/workflows/sop-check.yml/badge.svg" alt="sop-check.yml"></a>
 </p>
 <p align="center">
-  <img src="https://img.shields.io/badge/advantage__tradeoffs-SOPs%20tested%20in%20a%20no--network%20sandbox%2C%20automated%20review%20and%20merge%2C%20hash--pinned%20listing%2C%20static%20registry-2ea44f" alt="advantage_tradeoffs: SOPs tested in a no-network sandbox, automated review and merge, hash-pinned listing, static registry">
-  <img src="https://img.shields.io/badge/disadvantage__tradeoffs-stdlib%20only%3B%20no%20network%20SOPs%2C%20other%20changes%20need%20a%20maintainer%2C%20index%20updates%20after%20merges-d97706" alt="disadvantage_tradeoffs: stdlib only; no network SOPs, other changes need a maintainer, index updates after merges">
+  <a href="#trade-offs"><img src="https://img.shields.io/badge/advantage__tradeoffs-Quality%20gate%2C%20Hermetic%20testing%2C%20Content%20addressing%2C%20Static%20registry%2C%20Least%20privilege-2ea44f" alt="advantage_tradeoffs: Quality gate, Hermetic testing, Content addressing, Static registry, Least privilege"></a>
+  <a href="#trade-offs"><img src="https://img.shields.io/badge/disadvantage__tradeoffs-Eventual%20consistency%2C%20Human--in--the--loop%20bottleneck%2C%20Dependency%20minimalism-d97706" alt="disadvantage_tradeoffs: Eventual consistency, Human-in-the-loop bottleneck, Dependency minimalism"></a>
 </p>
 
 The public registry of general-purpose **SOPs** (standard operating procedures) for
@@ -199,6 +199,21 @@ scrape_configs:
 ```
 
 Import [`dashboards/ramensops.json`](dashboards/ramensops.json) in Grafana and pick that Prometheus datasource.
+
+## Trade-offs
+
+The design choices behind the badges at the top, named after the patterns and trade-offs they are.
+
+| | Trade-off | What it means here |
+|---|---|---|
+| Advantage | **Quality gate** | No SOP merges without its own tests passing in CI, on the exact commit being merged. |
+| Advantage | **Hermetic testing** | Tests run in a fresh, resource-limited, non-root container with no network or credentials, so results are reproducible and an SOP can't depend on hidden state. |
+| Advantage | **Content addressing** | The listing pins every file's SHA-256, and clients verify each file before use. |
+| Advantage | **Static registry** | The index is published as files on the `registry` branch; there is no server to run or attack. |
+| Advantage | **Least privilege** | Each SOP declares its permissions, and anything beyond computing and declared file access needs a maintainer. |
+| Disadvantage | **Eventual consistency** | The index is rebuilt after merges and hourly, so a merged SOP isn't available instantly. |
+| Disadvantage | **Human-in-the-loop bottleneck** | Network access, commands, side effects, non-standard-library imports, breaking changes and anything outside `sops/` wait for a maintainer. |
+| Disadvantage | **Dependency minimalism** | The standard library is preferred (it's the automatic-merge path): fewer supply-chain risks, but more code per SOP. |
 
 ## License and disclaimer
 
