@@ -1,0 +1,23 @@
+# HELP ramensops_sops SOPs in the registry, by top-level category, status and kind.
+# TYPE ramensops_sops gauge
+ramensops_sops{category="code",status="validated",kind="script"} 1
+ramensops_sops{category="data",status="validated",kind="script"} 2
+# HELP ramensops_sop_tests Tests shipped with the registry's SOPs, by top-level category.
+# TYPE ramensops_sop_tests gauge
+ramensops_sop_tests{category="code"} 3
+ramensops_sop_tests{category="data"} 20
+# HELP ramensops_sops_requiring SOPs that need a permission, by permission.
+# TYPE ramensops_sops_requiring gauge
+ramensops_sops_requiring{permission="compute"} 1
+ramensops_sops_requiring{permission="exec"} 1
+ramensops_sops_requiring{permission="fs:read"} 2
+ramensops_sops_requiring{permission="fs:write"} 1
+# HELP ramensops_open_pull_requests Open pull requests (proposed SOPs and changes) when the registry was built.
+# TYPE ramensops_open_pull_requests gauge
+ramensops_open_pull_requests 0
+# HELP ramensops_build_timestamp_seconds When the registry was built (Unix time).
+# TYPE ramensops_build_timestamp_seconds gauge
+ramensops_build_timestamp_seconds 1792097834
+# HELP ramensops_build_info The commit of main the registry was built from.
+# TYPE ramensops_build_info gauge
+ramensops_build_info{commit="ee6d6318f5ad"} 1

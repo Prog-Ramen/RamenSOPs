@@ -1,0 +1,25 @@
+{
+ "format": 4,
+ "id": "code",
+ "entries": [
+  {
+   "type": "sop",
+   "id": "code.python_library_issue_regression_check",
+   "description": "Run a Python library's standard-library unittest suite and user-specified issue scenario checks after edits, repeatedly if needed, and report a compact JSON pass/fail summary.",
+   "keywords": [
+    "python",
+    "library",
+    "unittest",
+    "regression",
+    "issues",
+    "tests",
+    "scenario"
+   ],
+   "path": "code/python_library_issue_regression_check",
+   "meta": {
+    "path": "code/python_library_issue_regression_check/_meta.json",
+    "sha256": "3133dcb279aef86406a13143da86986f633b8c78f16cc951733fbaa24c53c109"
+   }
+  }
+ ]
+}
