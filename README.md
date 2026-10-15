@@ -1,5 +1,14 @@
 <div align="center"><img src="ramensops_logo.png" alt="RamenSOPs Logo" width="28%"></div>
 <div align="center"><img src="ramensops_txt.png" alt="RamenSOPs Text" width="75%"></div>
+<p align="center">
+  <a href="https://github.com/Prog-Ramen/RamenSOPs/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Prog-Ramen/RamenSOPs" alt="License"></a>
+  <a href="https://github.com/Prog-Ramen/RamenSOPs/releases"><img src="https://img.shields.io/github/v/release/Prog-Ramen/RamenSOPs" alt="Release"></a>
+  <a href="https://github.com/Prog-Ramen/RamenSOPs/actions/workflows/sop-check.yml"><img src="https://github.com/Prog-Ramen/RamenSOPs/actions/workflows/sop-check.yml/badge.svg" alt="sop-check.yml"></a>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/advantage__tradeoffs-SOPs%20tested%20in%20a%20no--network%20sandbox%2C%20automated%20review%20and%20merge%2C%20hash--pinned%20listing%2C%20static%20registry-2ea44f" alt="advantage_tradeoffs: SOPs tested in a no-network sandbox, automated review and merge, hash-pinned listing, static registry">
+  <img src="https://img.shields.io/badge/disadvantage__tradeoffs-stdlib%20only%3B%20no%20network%20SOPs%2C%20other%20changes%20need%20a%20maintainer%2C%20index%20updates%20after%20merges-d97706" alt="disadvantage_tradeoffs: stdlib only; no network SOPs, other changes need a maintainer, index updates after merges">
+</p>
 
 The public registry of general-purpose **SOPs** (standard operating procedures) for
 [Rameness](https://github.com/Prog-Ramen/Rameness): the JEV-driven agent harness.
