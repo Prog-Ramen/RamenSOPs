@@ -153,7 +153,7 @@ class MergerSafetyTests(unittest.TestCase):
     def test_unavailable_reviewer_cannot_call_merge_api(self):
         sha, base = 'a'*40, 'b'*40
         calls=[]
-        pr={'number':2,'draft':False,'state':'open','head':{'sha':sha,'repo':{'full_name':'owner/repo'}}}
+        pr={'number':2,'draft':False,'state':'open','user':{'login':'t3kkenz'},'head':{'sha':sha,'repo':{'full_name':'owner/repo'}}}
         def api(path, data=None, method=None):
             calls.append((path, data, method))
             if path.startswith('pulls?'):
@@ -167,7 +167,7 @@ class MergerSafetyTests(unittest.TestCase):
         rendered=[]
         with patch.object(merge,'api',side_effect=api), patch.object(merge,'git',side_effect=git), \
              patch.object(merge,'review',return_value=result), patch.object(merge,'assess',return_value={'verdict':'clean','findings':[]}), patch.object(merge,'checked',return_value=True), \
-             patch.object(merge,'cached_semantic',return_value=None), \
+             patch.object(merge,'cached_semantic',return_value=None), patch.object(merge,'maintainers',return_value={'t3kkenz'}), \
              patch.object(merge,'decide',return_value={'approved':False,'unavailable':True,'reason':'model_json failure'}), \
              patch.object(merge,'report',side_effect=lambda n,r: rendered.append(copy.deepcopy(r))), \
              patch.object(merge.subprocess,'run',return_value=subprocess.CompletedProcess([],0)):
@@ -176,6 +176,36 @@ class MergerSafetyTests(unittest.TestCase):
         self.assertFalse(rendered[0]['auto_merge'])
         self.assertEqual(rendered[0]['human'], [])
         self.assertEqual(merge.label_for(rendered[0]), 'sop:reviewer-error')
+
+class PublicContributionTests(unittest.TestCase):
+    def test_a_public_pr_that_passes_everything_still_waits_for_a_maintainer(self):
+        sha, base = 'a'*40, 'b'*40
+        calls=[]
+        pr={'number':3,'draft':False,'state':'open','user':{'login':'stranger'},'head':{'sha':sha,'repo':{'full_name':'other/repo'}}}
+        def api(path, data=None, method=None):
+            calls.append((path, data, method))
+            if path.startswith('pulls?'):
+                return [pr]
+            if path == 'pulls/3':
+                return pr
+            if path.startswith('pulls/3/reviews'):
+                return []
+            raise AssertionError('Unexpected API call: '+path)
+        def git(*args):
+            return sha if args == ('rev-parse','FETCH_HEAD') else base if args == ('rev-parse','origin/main') else ''
+        result={'ok':True,'auto_merge':True,'human':[],'fail':[],'sops':[], 'head':sha}
+        rendered=[]
+        with patch.object(merge,'api',side_effect=api), patch.object(merge,'git',side_effect=git), \
+             patch.object(merge,'review',return_value=result), patch.object(merge,'assess',return_value={'verdict':'clean','findings':[]}), patch.object(merge,'checked',return_value=True), \
+             patch.object(merge,'cached_semantic',return_value=None), patch.object(merge,'maintainers',return_value={'t3kkenz'}), \
+             patch.object(merge,'decide',return_value={'approved':True,'reason':'fine'}), \
+             patch.object(merge,'report',side_effect=lambda n,r: rendered.append(copy.deepcopy(r))), \
+             patch.object(merge.subprocess,'run',return_value=subprocess.CompletedProcess([],0)):
+            merge.main()
+        self.assertFalse(any('/merge' in path for path,_,_ in calls))
+        self.assertFalse(rendered[0]['auto_merge'])
+        self.assertIn("maintainer's approval", rendered[0]['human'][0])
+        self.assertEqual(merge.label_for(rendered[0]), 'sop:needs-human')
 
 if __name__ == '__main__':
     unittest.main()
