@@ -380,3 +380,32 @@ class CacheTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class Maintainers(unittest.TestCase):
+    def test_maintainers_come_from_codeowners_handles(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'CODEOWNERS'
+            p.write_text('# comment @nobody\n* @T3kkenz\n/ci/ @Prog-Ramen/maintainers @someone\n')
+            self.assertEqual(merge.maintainers(str(p)), {'t3kkenz', 'someone'})   # teams are skipped
+            self.assertEqual(merge.maintainers(str(Path(d) / 'missing')), set())
+
+    def test_a_maintainers_own_pr_is_trusted(self):
+        with patch.object(merge, 'api', side_effect=AssertionError('no review lookup needed')):
+            self.assertTrue(merge.trusted({'number': 5, 'user': {'login': 'T3kkenz'}}, 'abc', {'t3kkenz'}))
+
+    def test_a_public_pr_needs_a_maintainer_approval_of_this_commit(self):
+        pr = {'number': 7, 'user': {'login': 'stranger'}}
+        def reviews(*approvals):
+            return patch.object(merge, 'api', return_value=list(approvals))
+        with reviews():
+            self.assertFalse(merge.trusted(pr, 'abc', {'t3kkenz'}))
+        with reviews({'user': {'login': 'friend'}, 'state': 'APPROVED', 'commit_id': 'abc'}):
+            self.assertFalse(merge.trusted(pr, 'abc', {'t3kkenz'}))              # not a maintainer
+        with reviews({'user': {'login': 't3kkenz'}, 'state': 'APPROVED', 'commit_id': 'old'}):
+            self.assertFalse(merge.trusted(pr, 'abc', {'t3kkenz'}))              # approved an older commit
+        with reviews({'user': {'login': 't3kkenz'}, 'state': 'APPROVED', 'commit_id': 'abc'},
+                     {'user': {'login': 't3kkenz'}, 'state': 'CHANGES_REQUESTED', 'commit_id': 'abc'}):
+            self.assertFalse(merge.trusted(pr, 'abc', {'t3kkenz'}))              # their latest review counts
+        with reviews({'user': {'login': 't3kkenz'}, 'state': 'APPROVED', 'commit_id': 'abc'}):
+            self.assertTrue(merge.trusted(pr, 'abc', {'t3kkenz'}))

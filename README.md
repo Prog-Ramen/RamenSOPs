@@ -81,6 +81,9 @@ or unavailable reviews never authorize a merge. The merge decision also retries 
 
 The automatic criteria are:
 
+- The PR comes from a maintainer (a user named in `.github/CODEOWNERS` on `main`), or a
+  maintainer has approved its current commit. Anyone else's PR is labelled `sop:needs-human`
+  and waits for that approval, however well it scores.
 - A validated public Python script under `sops/<category>/<name>/`, with its matching ID,
   a useful description, a parameterized input schema, and declared permissions.
 - A meaningful, repeatable operation that is reusable across people and organizations;
@@ -162,9 +165,11 @@ prove provenance or eliminate obfuscated malicious behavior.
 
 ### Repository settings
 
-Require the `review` and `scan` status checks on `main`, with branches up to date before
-merging. Do not require a manual approval for automatically eligible SOPs. Maintainers can
-review and merge `sop:needs-human` PRs once their applicable checks pass. Keep Actions'
+Require the `review` and `scan` status checks on `main` for everyone, admins included, with
+branches up to date before merging. Require a code owner's approval in a second ruleset that
+only the maintainers and GitHub Actions (the merge job) can bypass: the merge job merges
+maintainers' own PRs, and anyone else's once a maintainer approved its current commit.
+Maintainers review and approve `sop:needs-human` PRs once their applicable checks pass. Keep Actions'
 default token read-only; each workflow declares the additional permissions it needs.
 The pipeline uses a direct guarded merge and does not depend on GitHub's auto-merge toggle
 or on allowing bots to approve pull requests. Leave `registry` writable by the index job.

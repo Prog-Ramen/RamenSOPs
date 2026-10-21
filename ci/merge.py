@@ -25,6 +25,27 @@ def api(path, data=None, method=None):
 def git(*args):
     return subprocess.run(['git', *args], capture_output=True, text=True, check=True, timeout=60).stdout.strip()
 
+def maintainers(path='.github/CODEOWNERS'):
+    """The maintainers: the users named in main's CODEOWNERS (this job runs from main, so a PR cannot add itself)."""
+    try:
+        text = Path(path).read_text()
+    except OSError:
+        return set()
+    return {w[1:].lower() for line in text.splitlines() if line.strip() and not line.lstrip().startswith('#')
+            for w in line.split()[1:] if w.startswith('@') and '/' not in w}
+
+def maintainer_approved(number, sha, team):
+    """A maintainer's latest review of this PR approves this exact commit."""
+    latest = {}
+    for r in api(f'pulls/{number}/reviews?per_page=100') or []:
+        if r.get('user') and r.get('state') in ('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'):
+            latest[r['user']['login'].lower()] = r
+    return any(login in team and r['state'] == 'APPROVED' and r.get('commit_id') == sha for login, r in latest.items())
+
+def trusted(pr, sha, team):
+    """Only maintainers' own PRs merge automatically; anyone else's needs a maintainer's approval of this commit."""
+    return ((pr.get('user') or {}).get('login') or '').lower() in team or maintainer_approved(pr['number'], sha, team)
+
 def checked(number, sha):
     # Independently verify both named workflows completed successfully for this exact PR SHA.
     # Do not trust reports/artifacts, and do not trust similarly named checks from other apps.
@@ -134,6 +155,10 @@ def main():
             result['human'].append('Security review is uncertain; maintainer review required.')
         if pr['draft']:
             continue
+        if not trusted(pr, sha, maintainers()):
+            result['auto_merge'] = False
+            result['human'].append("A contribution from outside the maintainers needs a maintainer's approval of this "
+                                   "commit before it can merge.")
         # Require a current branch; a main change cannot reuse old successful tests.
         up_to_date = subprocess.run(['git', 'merge-base', '--is-ancestor', base, sha], capture_output=True).returncode == 0
         if not up_to_date:
