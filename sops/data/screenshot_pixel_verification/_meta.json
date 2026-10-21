@@ -1,0 +1,62 @@
+{
+ "files": [
+  {
+   "path": "data/screenshot_pixel_verification/run.py",
+   "sha256": "6c90bf1ded32704bd5c14514916355b2eddeb4236ba7f56101e377dfa21ff5a3"
+  },
+  {
+   "path": "data/screenshot_pixel_verification/sop.json",
+   "sha256": "381dea28d7916b7a2535c10725280df686616c5d0b3cf23195f5c1efa53247a1"
+  }
+ ],
+ "inputs": {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+   "block_cols": {
+    "description": "Optional number of blocks to divide the image into horizontally for block-structure verification.",
+    "maximum": 128,
+    "minimum": 2,
+    "type": "integer"
+   },
+   "block_rows": {
+    "description": "Optional number of blocks to divide the image into vertically for block-structure verification.",
+    "maximum": 128,
+    "minimum": 2,
+    "type": "integer"
+   },
+   "block_threshold": {
+    "default": 32,
+    "maximum": 255,
+    "minimum": 0,
+    "type": "number"
+   },
+   "path": {
+    "description": "Path to the PNG screenshot to check, relative to the working directory or absolute.",
+    "type": "string"
+   },
+   "sample_cols": {
+    "default": 8,
+    "maximum": 512,
+    "minimum": 1,
+    "type": "integer"
+   },
+   "sample_rows": {
+    "default": 6,
+    "maximum": 512,
+    "minimum": 1,
+    "type": "integer"
+   }
+  },
+  "required": [
+   "path"
+  ],
+  "type": "object"
+ },
+ "kind": "script",
+ "permissions": [
+  "fs:read"
+ ],
+ "status": "validated",
+ "version": "1.0.0"
+}

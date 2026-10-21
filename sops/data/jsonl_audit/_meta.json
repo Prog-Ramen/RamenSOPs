@@ -1,0 +1,35 @@
+{
+ "files": [
+  {
+   "path": "data/jsonl_audit/run.py",
+   "sha256": "b141e7fe581aa65df9e046cdd4cf6500c9beafb4557992ef8e2d64023a806443"
+  },
+  {
+   "path": "data/jsonl_audit/sop.json",
+   "sha256": "9003062dda10bb2beb793b7943f6c6d2a5b47c4453edb1e10b62c7b5db2c8bc2"
+  }
+ ],
+ "inputs": {
+  "properties": {
+   "output_file": {
+    "description": "Optional path to also write the report as a JSON file.",
+    "type": "string"
+   },
+   "text": {
+    "description": "The full JSONL content to audit (may contain blank lines; a trailing newline is not required).",
+    "type": "string"
+   }
+  },
+  "required": [
+   "text"
+  ],
+  "type": "object"
+ },
+ "kind": "script",
+ "permissions": [
+  "compute",
+  "fs:write"
+ ],
+ "status": "validated",
+ "version": "1.0.0"
+}
