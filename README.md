@@ -6,8 +6,8 @@
   <a href="https://github.com/Prog-Ramen/RamenSOPs/actions/workflows/sop-check.yml"><img src="https://github.com/Prog-Ramen/RamenSOPs/actions/workflows/sop-check.yml/badge.svg" alt="sop-check.yml"></a>
 </p>
 <p align="center">
-  <a href="#trade-offs"><img src="https://img.shields.io/badge/advantage__tradeoffs-Quality%20gate%2C%20Hermetic%20testing%2C%20Content%20addressing%2C%20Static%20registry%2C%20Least%20privilege-2ea44f" alt="advantage_tradeoffs: Quality gate, Hermetic testing, Content addressing, Static registry, Least privilege"></a>
-  <a href="#trade-offs"><img src="https://img.shields.io/badge/disadvantage__tradeoffs-Eventual%20consistency%2C%20Human--in--the--loop%20bottleneck%2C%20Dependency%20minimalism-d97706" alt="disadvantage_tradeoffs: Eventual consistency, Human-in-the-loop bottleneck, Dependency minimalism"></a>
+  <a href="#trade-offs"><img src="https://img.shields.io/badge/%2B%20tradeoffs-Quality%20gate%2C%20Hermetic%20testing%2C%20Content%20addressing%2C%20Static%20registry%2C%20Least%20privilege-2ea44f" alt="+ tradeoffs: Quality gate, Hermetic testing, Content addressing, Static registry, Least privilege"></a>
+  <a href="#trade-offs"><img src="https://img.shields.io/badge/--%20tradeoffs-Eventual%20consistency%2C%20Human--in--the--loop%20bottleneck%2C%20Dependency%20minimalism-d97706" alt="- tradeoffs: Eventual consistency, Human-in-the-loop bottleneck, Dependency minimalism"></a>
 </p>
 
 The public registry of general-purpose **SOPs** (standard operating procedures) for
